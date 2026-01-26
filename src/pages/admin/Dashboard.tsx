@@ -103,60 +103,63 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <DashboardHeader 
         userName={user?.fullName || 'Martin Butler'} 
         userRole="HR Executive" 
       />
 
-      {/* Row 1: 2x2 Metrics Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <MetricCard
-          title="Attendance Rate"
-          value={`${attendanceRate}%`}
-          subtitle="Calendar Check"
-          icon={CalendarCheck}
-          trend={{ value: 2.5, isPositive: true }}
-        />
-        <MetricCard
-          title="Payroll Processed"
-          value="1,240"
-          subtitle="Salary Transactions"
-          icon={DollarSign}
-          trend={{ value: 1.8, isPositive: true }}
-        />
-        <MetricCard
-          title="Average Working Hours"
-          value="7.9"
-          subtitle="hrs Per Employee Daily"
-          icon={Clock}
-          trend={{ value: 0.4, isPositive: false }}
-        />
-        <MetricCard
-          title="Employee Satisfaction"
-          value="8.7"
-          subtitle="/10 Avg. Survey Score"
-          icon={Smile}
-          trend={{ value: 0.6, isPositive: true }}
-        />
-      </div>
+      {/* Row 1: 4 Metrics + Payroll + Schedule */}
+      <div className="grid grid-cols-4 gap-2">
+        {/* Left: 2x2 Metrics Grid */}
+        <div className="col-span-2 grid grid-cols-2 gap-2">
+          <MetricCard
+            title="Attendance Rate"
+            value={`${attendanceRate}%`}
+            subtitle="Calendar Check"
+            icon={CalendarCheck}
+            trend={{ value: 2.5, isPositive: true }}
+          />
+          <MetricCard
+            title="Payroll Processed"
+            value="1,240"
+            subtitle="Salary Transactions"
+            icon={DollarSign}
+            trend={{ value: 1.8, isPositive: true }}
+          />
+          <MetricCard
+            title="Average Working Hours"
+            value="7.9"
+            subtitle="Per Employee Daily"
+            icon={Clock}
+            trend={{ value: 0.4, isPositive: false }}
+            valueUnit="hrs"
+          />
+          <MetricCard
+            title="Employee Satisfaction"
+            value="8.7"
+            subtitle="Avg. Survey Score"
+            icon={Smile}
+            trend={{ value: 0.6, isPositive: true }}
+            valueUnit="/10"
+          />
+        </div>
 
-      {/* Row 2: Payroll Grid + Schedule */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Payroll Grid */}
         <PayrollGrid
           takeHomePay="$2,350.00"
           paymentPercentage={100}
         />
-        <div className="md:col-span-2">
-          <ScheduleCard 
-            events={scheduleEvents} 
-            totalCount={16} 
-          />
-        </div>
+
+        {/* Schedule */}
+        <ScheduleCard 
+          events={scheduleEvents} 
+          totalCount={16} 
+        />
       </div>
 
-      {/* Row 3: Attendance Heatmap + Project Table */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      {/* Row 2: Attendance Heatmap + Project Table */}
+      <div className="grid grid-cols-2 gap-2">
         <AttendanceHeatmap rate={98} trend={2.5} />
         <ProjectStatusTable projects={projects} />
       </div>
