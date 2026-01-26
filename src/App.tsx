@@ -11,7 +11,7 @@ import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
 // Admin Pages
-import { AdminLayout } from "./components/layout/AdminLayout";
+import { FlowHRLayout } from "./components/layout/FlowHRLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
 import Employees from "./pages/admin/Employees";
 import NewEmployee from "./pages/admin/NewEmployee";
@@ -44,7 +44,7 @@ const App = () => (
               path="/admin"
               element={
                 <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminLayout />
+                  <FlowHRLayout />
                 </ProtectedRoute>
               }
             >
