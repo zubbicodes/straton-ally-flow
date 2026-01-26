@@ -19,10 +19,10 @@ interface TeamPerformanceProps {
 export function TeamPerformance({ rate = 93.3, trend = 3.84 }: TeamPerformanceProps) {
   return (
     <Card className="border-border/50 shadow-none">
-      <CardHeader className="pb-2 flex flex-row items-center justify-between">
-        <CardTitle className="text-base font-semibold">Team Performance</CardTitle>
+      <CardHeader className="pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <CardTitle className="text-sm md:text-base font-semibold">Team Performance</CardTitle>
         <Select defaultValue="month">
-          <SelectTrigger className="w-[100px] h-8 text-xs">
+          <SelectTrigger className="w-full sm:w-[100px] h-8 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -35,23 +35,23 @@ export function TeamPerformance({ rate = 93.3, trend = 3.84 }: TeamPerformancePr
       <CardContent className="pt-0">
         <div className="mb-4">
           <div className="flex items-baseline gap-1">
-            <span className="text-3xl font-bold">{rate}%</span>
+            <span className="text-2xl md:text-3xl font-bold">{rate}%</span>
           </div>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1 text-[10px] md:text-xs text-muted-foreground">
             <TrendingUp className="h-3 w-3 text-success" />
             <span className="text-success font-medium">+{trend}%</span>
-            <span>Increased vs last week</span>
+            <span className="hidden sm:inline">Increased vs last week</span>
           </div>
         </div>
         
-        <div className="h-[140px]">
+        <div className="h-[120px] md:h-[140px] -mx-2 md:mx-0">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={performanceData} barSize={12} barGap={2}>
+            <BarChart data={performanceData} barSize={10} barGap={1}>
               <XAxis 
                 dataKey="day" 
                 axisLine={false} 
                 tickLine={false}
-                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
               />
               <Tooltip 
                 contentStyle={{
@@ -68,18 +68,18 @@ export function TeamPerformance({ rate = 93.3, trend = 3.84 }: TeamPerformancePr
           </ResponsiveContainer>
         </div>
         
-        <div className="flex items-center justify-center gap-4 mt-3 text-xs">
+        <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 mt-3 text-[10px] md:text-xs">
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-sm bg-success/30" />
             <span className="text-muted-foreground">Sales</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-sm bg-success/60" />
-            <span className="text-muted-foreground">Product Design</span>
+            <span className="text-muted-foreground">Design</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-sm bg-success" />
-            <span className="text-muted-foreground">Operation</span>
+            <span className="text-muted-foreground">Ops</span>
           </div>
         </div>
       </CardContent>
