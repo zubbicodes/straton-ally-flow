@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { signIn, isAllowedEmail, getRedirectPath, getUserRole } from '@/lib/auth';
+import { AnimatedCharacters } from '@/components/ui/animated-characters';
 
 const loginSchema = z.object({
   email: z
@@ -27,6 +28,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -34,9 +36,12 @@ export default function Login() {
     register,
     handleSubmit,
     formState: { errors },
+    watch,
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
   });
+
+  const password = watch('password', '');
 
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
@@ -70,33 +75,34 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left side - Geometric pattern */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-accent/20 via-background to-info/10">
-        {/* Geometric shapes */}
-        <div className="absolute inset-0">
-          {/* Large circle */}
-          <div className="absolute -left-20 top-1/4 w-80 h-80 rounded-full bg-accent/30" />
-          {/* Medium circles */}
-          <div className="absolute left-40 top-20 w-40 h-40 rounded-full bg-info/20" />
-          <div className="absolute left-20 bottom-40 w-60 h-60 rounded-full bg-success/15" />
-          {/* Small accents */}
-          <div className="absolute right-20 top-40 w-24 h-24 rounded-full bg-warning/25" />
-          <div className="absolute left-60 bottom-20 w-32 h-32 rounded-full bg-accent/40" />
-          {/* Curved shapes */}
-          <div className="absolute left-0 bottom-0 w-96 h-96">
-            <svg viewBox="0 0 200 200" className="w-full h-full">
-              <path
-                d="M 0 100 Q 50 0 100 50 Q 150 100 100 150 Q 50 200 0 100"
-                fill="hsl(var(--accent) / 0.25)"
-              />
-            </svg>
-          </div>
+      {/* Left side - Animated Characters */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-accent/10 via-background to-muted/20 flex-col">
+        {/* Background decorative elements */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -left-20 -top-20 w-80 h-80 rounded-full bg-accent/10" />
+          <div className="absolute right-10 top-20 w-40 h-40 rounded-full bg-success/10" />
+          <div className="absolute left-1/3 bottom-1/3 w-60 h-60 rounded-full bg-info/10" />
+        </div>
+
+        {/* Characters section */}
+        <div className="flex-1 flex items-end justify-center px-12 pb-0 relative z-10">
+          <AnimatedCharacters 
+            isTyping={isTyping}
+            isPasswordVisible={showPassword}
+            hasPassword={password.length > 0}
+          />
         </div>
         
         {/* Brand overlay */}
-        <div className="absolute bottom-12 left-12 z-10">
+        <div className="absolute bottom-12 left-12 z-20">
           <h1 className="text-5xl font-display font-bold text-foreground">FLOW</h1>
           <p className="text-lg text-muted-foreground mt-2">by STRATON ALLY</p>
+        </div>
+
+        {/* Footer links */}
+        <div className="absolute bottom-12 right-12 z-20 flex gap-6 text-sm text-muted-foreground">
+          <span className="hover:text-foreground cursor-pointer transition-colors">Privacy Policy</span>
+          <span className="hover:text-foreground cursor-pointer transition-colors">Terms of Service</span>
         </div>
       </div>
 
@@ -129,6 +135,8 @@ export default function Login() {
                   {...register('email')}
                   className="h-12 bg-secondary/50 border-border focus:border-accent focus:ring-accent/20"
                   disabled={isLoading}
+                  onFocus={() => setIsTyping(true)}
+                  onBlur={() => setIsTyping(false)}
                 />
                 {errors.email && (
                   <p className="text-sm text-destructive">{errors.email.message}</p>
@@ -147,6 +155,8 @@ export default function Login() {
                     {...register('password')}
                     className="h-12 bg-secondary/50 border-border focus:border-accent focus:ring-accent/20 pr-10"
                     disabled={isLoading}
+                    onFocus={() => setIsTyping(true)}
+                    onBlur={() => setIsTyping(false)}
                   />
                   <button
                     type="button"
