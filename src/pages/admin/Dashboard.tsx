@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Users, Clock, FileText, CalendarDays } from 'lucide-react';
+import { CalendarCheck, DollarSign, Clock, Smile } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { MetricCard } from '@/components/dashboard/MetricCard';
-import { AttendanceChart } from '@/components/dashboard/AttendanceChart';
-import { TeamPerformance } from '@/components/dashboard/TeamPerformance';
-import { PayrollTable } from '@/components/dashboard/PayrollTable';
-import { SatisfactionCard } from '@/components/dashboard/QuickStats';
+import { PayrollGrid } from '@/components/dashboard/PayrollGrid';
+import { ScheduleCard } from '@/components/dashboard/ScheduleCard';
+import { AttendanceHeatmap } from '@/components/dashboard/AttendanceHeatmap';
+import { ProjectStatusTable } from '@/components/dashboard/ProjectStatusTable';
 
 interface DashboardStats {
   totalEmployees: number;
@@ -33,17 +33,14 @@ export default function AdminDashboard() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
-        // Fetch employee count
         const { count: employeeCount } = await supabase
           .from('employees')
           .select('*', { count: 'exact', head: true });
 
-        // Fetch department count
         const { count: deptCount } = await supabase
           .from('departments')
           .select('*', { count: 'exact', head: true });
 
-        // Fetch today's attendance
         const today = format(new Date(), 'yyyy-MM-dd');
         const { data: attendanceData } = await supabase
           .from('attendance')
@@ -57,7 +54,7 @@ export default function AdminDashboard() {
           totalEmployees: employeeCount || 0,
           presentToday,
           onLeave,
-          pendingLeaves: 34, // Mock data for demo
+          pendingLeaves: 34,
           departments: deptCount || 0,
         });
       } catch (error) {
@@ -70,93 +67,99 @@ export default function AdminDashboard() {
     fetchDashboardData();
   }, []);
 
-  // Mock data for charts
-  const attendanceChartData = Array.from({ length: 22 }, (_, i) => ({
-    day: String(i + 1).padStart(2, '0'),
-    time: '09:00 AM',
-    value: 8 + Math.random() * 2,
-  }));
-
-  const mockPayrollData = [
-    { id: '1', name: 'Vikas Tiwari', employeeId: 'TN-0178', jobTitle: 'UI Designer', department: 'Product Design', salary: 3530, deduction: 130, total: 3400 },
-    { id: '2', name: 'Ramesh Gupta', employeeId: 'TN-0289', jobTitle: 'HR Officer', department: 'Human Resources', salary: 3685, deduction: 110, total: 3575 },
-    { id: '3', name: 'Sunil Bhadouriya', employeeId: 'TN-0234', jobTitle: 'Marketing', department: 'Executive Marketing', salary: 3200, deduction: 120, total: 3590 },
-  ];
-
-  const satisfactionData = {
-    verySatisfied: 421,
-    satisfied: 103,
-    dissatisfied: 13,
-    avgSatisfaction: 73,
-    yearChange: 6,
-  };
-
   const attendanceRate = stats.totalEmployees > 0 
     ? Math.round((stats.presentToday / stats.totalEmployees) * 100) 
-    : 0;
+    : 92;
+
+  // Mock schedule events
+  const scheduleEvents = [
+    {
+      id: '1',
+      title: 'Interview Candidate - Customer Service',
+      date: '26 September, 2025',
+      time: '09:00 - 09:30',
+      type: 'meeting' as const,
+      platform: 'Google Meet',
+      attendees: ['JD', 'MK', 'RS'],
+    },
+    {
+      id: '2',
+      title: 'Town-hall Office - September 2025',
+      date: '30 September, 2025',
+      time: '09:30 - 11:30',
+      type: 'event' as const,
+      platform: 'Zoom Meeting',
+      attendees: ['AB', 'CD', 'EF'],
+    },
+  ];
+
+  // Mock projects
+  const projects = [
+    { id: '1', name: 'Portal Update', department: 'Engineering', progress: 85, deadline: 'Jun 28, 2025', status: 'on-track' as const },
+    { id: '2', name: 'Hiring Drive', department: 'HR', progress: 60, deadline: 'Jun 20, 2025', status: 'in-progress' as const },
+    { id: '3', name: 'Finance Report', department: 'Finance', progress: 95, deadline: 'Jun 14, 2025', status: 'on-track' as const },
+    { id: '4', name: 'UX Revamp', department: 'Product', progress: 75, deadline: 'Jun 24, 2025', status: 'on-track' as const },
+    { id: '5', name: 'Chatbot Setup', department: 'Support', progress: 40, deadline: 'July 8, 2025', status: 'delayed' as const },
+  ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <DashboardHeader 
-        userName={user?.fullName || 'Admin'} 
+        userName={user?.fullName || 'Martin Butler'} 
         userRole="HR Executive" 
       />
 
-      {/* Metric Cards */}
+      {/* Top Section: 2x2 Metrics + Payroll + Schedule */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        {/* 2x2 Metric Cards on left */}
         <MetricCard
-          title="Total Employees"
-          value={stats.totalEmployees}
-          icon={Users}
-          trend={{ value: 3.84, isPositive: true, label: 'vs last week' }}
-        />
-        <MetricCard
-          title="Attendance"
+          title="Attendance Rate"
           value={`${attendanceRate}%`}
-          subtitle="Present"
+          subtitle="Calendar Check"
+          icon={CalendarCheck}
+          trend={{ value: 2.5, isPositive: true }}
+        />
+        <MetricCard
+          title="Payroll Processed"
+          value="1,240"
+          subtitle="Salary Transactions"
+          icon={DollarSign}
+          trend={{ value: 1.8, isPositive: true }}
+        />
+        <MetricCard
+          title="Average Working Hours"
+          value="7.9"
+          subtitle="hrs Per Employee Daily"
           icon={Clock}
+          trend={{ value: 0.4, isPositive: false }}
         />
         <MetricCard
-          title="Applications"
-          value="49"
-          subtitle="New"
-          icon={FileText}
-          trend={{ value: 1.23, isPositive: false, label: 'vs last week' }}
-        />
-        <MetricCard
-          title="Leave"
-          value={stats.pendingLeaves}
-          subtitle="Pending"
-          icon={CalendarDays}
-          trend={{ value: 0.25, isPositive: false, label: 'vs last week' }}
+          title="Employee Satisfaction"
+          value="8.7"
+          subtitle="/10 Avg. Survey Score"
+          icon={Smile}
+          trend={{ value: 0.6, isPositive: true }}
         />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
-        <div className="lg:col-span-2 min-w-0">
-          <AttendanceChart
-            data={attendanceChartData}
-            rate={92}
-            trend={1.54}
-            onTime={220}
-            late={15}
-            absent={15}
+      {/* Middle Section: Payroll Grid + Schedule */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+        <PayrollGrid
+          takeHomePay="$2,350.00"
+          paymentPercentage={100}
+        />
+        <div className="lg:col-span-2">
+          <ScheduleCard 
+            events={scheduleEvents} 
+            totalCount={16} 
           />
         </div>
-        <div className="min-w-0">
-          <TeamPerformance rate={93.3} trend={3.84} />
-        </div>
       </div>
 
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
-        <div className="min-w-0">
-          <SatisfactionCard data={satisfactionData} />
-        </div>
-        <div className="lg:col-span-2 min-w-0 overflow-x-auto">
-          <PayrollTable employees={mockPayrollData} />
-        </div>
+      {/* Bottom Section: Attendance Heatmap + Project Table */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+        <AttendanceHeatmap rate={98} trend={2.5} />
+        <ProjectStatusTable projects={projects} />
       </div>
     </div>
   );
