@@ -103,15 +103,14 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4">
       <DashboardHeader 
         userName={user?.fullName || 'Martin Butler'} 
         userRole="HR Executive" 
       />
 
-      {/* Top Section: 2x2 Metrics + Payroll + Schedule */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        {/* 2x2 Metric Cards on left */}
+      {/* Row 1: 2x2 Metrics Grid */}
+      <div className="grid grid-cols-2 gap-3">
         <MetricCard
           title="Attendance Rate"
           value={`${attendanceRate}%`}
@@ -142,13 +141,13 @@ export default function AdminDashboard() {
         />
       </div>
 
-      {/* Middle Section: Payroll Grid + Schedule */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+      {/* Row 2: Payroll Grid + Schedule */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <PayrollGrid
           takeHomePay="$2,350.00"
           paymentPercentage={100}
         />
-        <div className="lg:col-span-2">
+        <div className="md:col-span-2">
           <ScheduleCard 
             events={scheduleEvents} 
             totalCount={16} 
@@ -156,8 +155,8 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Bottom Section: Attendance Heatmap + Project Table */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
+      {/* Row 3: Attendance Heatmap + Project Table */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <AttendanceHeatmap rate={98} trend={2.5} />
         <ProjectStatusTable projects={projects} />
       </div>
