@@ -103,7 +103,7 @@ export default function AdminDashboard() {
       />
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <MetricCard
           title="Total Employees"
           value={stats.totalEmployees}
@@ -117,14 +117,14 @@ export default function AdminDashboard() {
           icon={Clock}
         />
         <MetricCard
-          title="Job Applications"
+          title="Applications"
           value="49"
-          subtitle="New applicants"
+          subtitle="New"
           icon={FileText}
           trend={{ value: 1.23, isPositive: false, label: 'vs last week' }}
         />
         <MetricCard
-          title="Leave Requests"
+          title="Leave"
           value={stats.pendingLeaves}
           subtitle="Pending"
           icon={CalendarDays}
@@ -133,8 +133,8 @@ export default function AdminDashboard() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+        <div className="lg:col-span-2 min-w-0">
           <AttendanceChart
             data={attendanceChartData}
             rate={92}
@@ -144,13 +144,17 @@ export default function AdminDashboard() {
             absent={15}
           />
         </div>
-        <TeamPerformance rate={93.3} trend={3.84} />
+        <div className="min-w-0">
+          <TeamPerformance rate={93.3} trend={3.84} />
+        </div>
       </div>
 
       {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <SatisfactionCard data={satisfactionData} />
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+        <div className="min-w-0">
+          <SatisfactionCard data={satisfactionData} />
+        </div>
+        <div className="lg:col-span-2 min-w-0 overflow-x-auto">
           <PayrollTable employees={mockPayrollData} />
         </div>
       </div>

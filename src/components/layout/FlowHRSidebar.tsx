@@ -77,23 +77,6 @@ export function FlowHRSidebar() {
         })}
       </nav>
 
-      {/* Upgrade Card */}
-      {!collapsed && (
-        <div className="mx-3 mb-3 p-4 bg-gradient-to-br from-success/10 to-success/5 rounded-xl border border-success/20">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-success/20 flex items-center justify-center">
-              <Sparkles className="h-4 w-4 text-success" />
-            </div>
-          </div>
-          <p className="font-semibold text-sm mb-1">Upgrade your Plan</p>
-          <p className="text-xs text-muted-foreground mb-3">
-            Get full control with advanced features and automation
-          </p>
-          <Button size="sm" className="w-full bg-success hover:bg-success/90 text-white">
-            Get FlowHR Pro
-          </Button>
-        </div>
-      )}
 
       {/* Bottom Items */}
       <div className="px-2 pb-2 border-t border-border pt-2">

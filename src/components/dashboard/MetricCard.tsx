@@ -1,8 +1,7 @@
 import { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, MoreHorizontal } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 
 interface MetricCardProps {
   title: string;
@@ -28,50 +27,36 @@ export function MetricCard({
   className,
 }: MetricCardProps) {
   return (
-    <Card className={cn('border-border/50 shadow-none hover:shadow-sm transition-shadow', className)}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between mb-3">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            {title}
-          </span>
-          <Button variant="ghost" size="icon" className="h-6 w-6 -mr-1 -mt-1">
-            <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-          </Button>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold tracking-tight">{value}</span>
+    <Card className={cn('border-border/50 shadow-none', className)}>
+      <CardContent className="p-3 md:p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-0.5 md:space-y-1 min-w-0 flex-1">
+            <p className="text-[10px] md:text-xs text-muted-foreground font-medium truncate">{title}</p>
+            <div className="flex items-baseline gap-1 flex-wrap">
+              <span className="text-lg md:text-2xl font-bold tracking-tight">{value}</span>
               {subtitle && (
-                <span className="text-sm text-muted-foreground">{subtitle}</span>
+                <span className="text-[10px] md:text-xs text-muted-foreground">{subtitle}</span>
               )}
             </div>
-            
             {trend && (
-              <div className="flex items-center gap-1.5 mt-1">
+              <div className="flex items-center gap-1 text-[10px] md:text-xs">
                 {trend.isPositive ? (
-                  <TrendingUp className="h-3 w-3 text-success" />
+                  <TrendingUp className="h-3 w-3 text-success flex-shrink-0" />
                 ) : (
-                  <TrendingDown className="h-3 w-3 text-destructive" />
+                  <TrendingDown className="h-3 w-3 text-destructive flex-shrink-0" />
                 )}
-                <span
-                  className={cn(
-                    'text-xs font-medium',
-                    trend.isPositive ? 'text-success' : 'text-destructive'
-                  )}
-                >
+                <span className={cn(
+                  'font-medium',
+                  trend.isPositive ? 'text-success' : 'text-destructive'
+                )}>
                   {trend.isPositive ? '+' : ''}{trend.value}%
                 </span>
-                {trend.label && (
-                  <span className="text-xs text-muted-foreground">{trend.label}</span>
-                )}
+                <span className="text-muted-foreground hidden sm:inline">{trend.label}</span>
               </div>
             )}
           </div>
-          
-          <div className={cn('p-2.5 rounded-lg bg-secondary', iconColor)}>
-            <Icon className="h-5 w-5" />
+          <div className="w-8 h-8 md:w-9 md:h-9 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0">
+            <Icon className="h-4 w-4 text-success" />
           </div>
         </div>
       </CardContent>
