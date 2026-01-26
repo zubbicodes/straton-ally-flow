@@ -27,38 +27,38 @@ export function ProjectStatusTable({ projects }: ProjectStatusTableProps) {
   };
 
   return (
-    <div className="card-elevated p-3 md:p-4 rounded-lg">
-      <div className="flex items-center justify-between mb-3">
+    <div className="card-elevated p-3 rounded-lg">
+      <div className="flex items-center justify-between mb-2">
         <div>
-          <h3 className="font-semibold text-sm">Project Status Overview</h3>
-          <p className="text-[10px] text-muted-foreground mt-0.5">
+          <h3 className="font-medium text-xs">Project Status Overview</h3>
+          <p className="text-[9px] text-muted-foreground mt-0.5">
             Track project completion and department responsibility
           </p>
         </div>
-        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1 px-2">
-          <Plus className="h-3 w-3" />
+        <Button variant="outline" size="sm" className="h-5 text-[9px] gap-0.5 px-1.5">
+          <Plus className="h-2.5 w-2.5" />
           Add Project
         </Button>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto -mx-3 md:mx-0">
-        <table className="w-full min-w-[450px]">
+      <div className="overflow-x-auto -mx-3">
+        <table className="w-full min-w-[400px]">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left text-[10px] font-medium text-muted-foreground pb-2 pl-3 md:pl-0">
+              <th className="text-left text-[9px] font-medium text-muted-foreground pb-1.5 pl-3">
                 Project Name
               </th>
-              <th className="text-left text-[10px] font-medium text-muted-foreground pb-2">
+              <th className="text-left text-[9px] font-medium text-muted-foreground pb-1.5">
                 Department
               </th>
-              <th className="text-left text-[10px] font-medium text-muted-foreground pb-2">
+              <th className="text-left text-[9px] font-medium text-muted-foreground pb-1.5">
                 Progress
               </th>
-              <th className="text-left text-[10px] font-medium text-muted-foreground pb-2">
+              <th className="text-left text-[9px] font-medium text-muted-foreground pb-1.5">
                 Deadline
               </th>
-              <th className="text-right text-[10px] font-medium text-muted-foreground pb-2 pr-3 md:pr-0">
+              <th className="text-right text-[9px] font-medium text-muted-foreground pb-1.5 pr-3">
                 Status
               </th>
             </tr>
@@ -68,23 +68,20 @@ export function ProjectStatusTable({ projects }: ProjectStatusTableProps) {
               const status = getStatusBadge(project.status);
               return (
                 <tr key={project.id} className="border-b border-border/50 last:border-0">
-                  <td className="py-2 pl-3 md:pl-0">
-                    <span className="text-xs font-medium">{project.name}</span>
+                  <td className="py-1.5 pl-3">
+                    <span className="text-[10px] font-medium">{project.name}</span>
                   </td>
-                  <td className="py-2">
-                    <span className="text-xs text-muted-foreground">{project.department}</span>
+                  <td className="py-1.5">
+                    <span className="text-[10px] text-muted-foreground">{project.department}</span>
                   </td>
-                  <td className="py-2">
-                    <div className="flex items-center gap-1.5">
-                      <Progress value={project.progress} className="h-1 w-12" />
-                      <span className="text-[10px] text-muted-foreground">{project.progress}%</span>
-                    </div>
+                  <td className="py-1.5">
+                    <span className="text-[10px] text-muted-foreground">{project.progress}%</span>
                   </td>
-                  <td className="py-2">
-                    <span className="text-xs text-muted-foreground">{project.deadline}</span>
+                  <td className="py-1.5">
+                    <span className="text-[10px] text-muted-foreground">{project.deadline}</span>
                   </td>
-                  <td className="py-2 pr-3 md:pr-0 text-right">
-                    <span className={cn('text-[10px] font-medium flex items-center gap-1 justify-end', status.className)}>
+                  <td className="py-1.5 pr-3 text-right">
+                    <span className={cn('text-[9px] font-medium flex items-center gap-0.5 justify-end', status.className)}>
                       <span className="w-1 h-1 rounded-full bg-current" />
                       {status.label}
                     </span>
