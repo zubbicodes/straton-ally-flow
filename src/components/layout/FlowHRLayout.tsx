@@ -1,17 +1,17 @@
 import { Outlet } from 'react-router-dom';
-import { FlowHRSidebar } from './FlowHRSidebar';
+import { TopNav } from './TopNav';
 import { BottomNav } from './BottomNav';
 
 export function FlowHRLayout() {
   return (
-    <div className="flex min-h-screen bg-background overflow-x-hidden">
-      {/* Desktop Sidebar */}
+    <div className="min-h-screen bg-background overflow-x-hidden">
+      {/* Desktop Top Nav */}
       <div className="hidden md:block">
-        <FlowHRSidebar />
+        <TopNav />
       </div>
       
-      <main className="flex-1 overflow-x-hidden">
-        <div className="p-4 md:p-6 max-w-[1600px] mx-auto pb-20 md:pb-6">
+      <main className="overflow-x-hidden">
+        <div className="px-4 md:px-6 py-4 max-w-[1400px] mx-auto pb-20 md:pb-6">
           <Outlet />
         </div>
       </main>

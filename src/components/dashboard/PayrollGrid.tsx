@@ -32,17 +32,17 @@ export function PayrollGrid({ takeHomePay, paymentPercentage }: PayrollGridProps
   };
 
   return (
-    <div className="card-elevated p-4 md:p-5 rounded-xl">
-      <div className="flex items-center justify-between mb-4">
+    <div className="card-elevated p-3 md:p-4 rounded-lg h-full">
+      <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-sm">Payroll</h3>
-        <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground gap-1">
+        <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground gap-1 px-2">
           Monthly
           <ChevronDown className="h-3 w-3" />
         </Button>
       </div>
 
       {/* Payroll Grid */}
-      <div className="grid grid-cols-6 gap-1.5 mb-4">
+      <div className="grid grid-cols-6 gap-1 mb-3">
         {gridData.map((row, rowIndex) => (
           row.map((intensity, colIndex) => (
             <div
@@ -57,14 +57,14 @@ export function PayrollGrid({ takeHomePay, paymentPercentage }: PayrollGridProps
       </div>
 
       {/* Footer Stats */}
-      <div className="flex items-center justify-between pt-3 border-t border-border">
+      <div className="flex items-center justify-between pt-2 border-t border-border">
         <div>
-          <p className="text-xs text-muted-foreground">Take home pay</p>
-          <p className="font-semibold">{takeHomePay}</p>
+          <p className="text-[10px] text-muted-foreground">Take home pay</p>
+          <p className="text-sm font-semibold">{takeHomePay}</p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-muted-foreground">Payment</p>
-          <p className="font-semibold">{paymentPercentage}%</p>
+          <p className="text-[10px] text-muted-foreground">Payment</p>
+          <p className="text-sm font-semibold">{paymentPercentage}%</p>
         </div>
       </div>
     </div>
