@@ -10,71 +10,63 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { signIn, isAllowedEmail, getRedirectPath, getUserRole } from '@/lib/auth';
 import { AnimatedCharacters } from '@/components/ui/animated-characters';
-
 const loginSchema = z.object({
-  email: z
-    .string()
-    .min(1, 'Email is required')
-    .email('Invalid email address')
-    .refine(
-      (email) => isAllowedEmail(email),
-      'Only @stratonally.com email addresses are allowed'
-    ),
-  password: z.string().min(1, 'Password is required'),
+  email: z.string().min(1, 'Email is required').email('Invalid email address').refine(email => isAllowedEmail(email), 'Only @stratonally.com email addresses are allowed'),
+  password: z.string().min(1, 'Password is required')
 });
-
 type LoginFormData = z.infer<typeof loginSchema>;
-
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const navigate = useNavigate();
-  const { toast } = useToast();
-
+  const {
+    toast
+  } = useToast();
   const {
     register,
     handleSubmit,
-    formState: { errors },
-    watch,
+    formState: {
+      errors
+    },
+    watch
   } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(loginSchema)
   });
-
   const password = watch('password', '');
-
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
-      const { user, error } = await signIn(data.email, data.password);
-      
+      const {
+        user,
+        error
+      } = await signIn(data.email, data.password);
       if (error) {
         toast({
           title: 'Sign in failed',
           description: error,
-          variant: 'destructive',
+          variant: 'destructive'
         });
         return;
       }
-
       if (user) {
         const role = await getUserRole(user.id);
         const redirectPath = getRedirectPath(role);
-        navigate(redirectPath, { replace: true });
+        navigate(redirectPath, {
+          replace: true
+        });
       }
     } catch (err) {
       toast({
         title: 'Error',
         description: 'An unexpected error occurred',
-        variant: 'destructive',
+        variant: 'destructive'
       });
     } finally {
       setIsLoading(false);
     }
   };
-
-  return (
-    <div className="min-h-screen flex">
+  return <div className="min-h-screen flex">
       {/* Left side - Animated Characters */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-accent/10 via-background to-muted/20 flex-col">
         {/* Background decorative elements */}
@@ -86,11 +78,7 @@ export default function Login() {
 
         {/* Characters section */}
         <div className="flex-1 flex items-end justify-center px-12 pb-0 relative z-10">
-          <AnimatedCharacters 
-            isTyping={isTyping}
-            isPasswordVisible={showPassword}
-            hasPassword={password.length > 0}
-          />
+          <AnimatedCharacters isTyping={isTyping} isPasswordVisible={showPassword} hasPassword={password.length > 0} />
         </div>
         
         {/* Brand overlay */}
@@ -101,8 +89,8 @@ export default function Login() {
 
         {/* Footer links */}
         <div className="absolute bottom-12 right-12 z-20 flex gap-6 text-sm text-muted-foreground">
-          <span className="hover:text-foreground cursor-pointer transition-colors">Privacy Policy</span>
-          <span className="hover:text-foreground cursor-pointer transition-colors">Terms of Service</span>
+          
+          
         </div>
       </div>
 
@@ -128,19 +116,8 @@ export default function Login() {
                 <Label htmlFor="email" className="text-sm font-medium">
                   Email
                 </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="name@stratonally.com"
-                  {...register('email')}
-                  className="h-12 bg-secondary/50 border-border focus:border-accent focus:ring-accent/20"
-                  disabled={isLoading}
-                  onFocus={() => setIsTyping(true)}
-                  onBlur={() => setIsTyping(false)}
-                />
-                {errors.email && (
-                  <p className="text-sm text-destructive">{errors.email.message}</p>
-                )}
+                <Input id="email" type="email" placeholder="name@stratonally.com" {...register('email')} className="h-12 bg-secondary/50 border-border focus:border-accent focus:ring-accent/20" disabled={isLoading} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} />
+                {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
               </div>
 
               <div className="space-y-2">
@@ -148,51 +125,22 @@ export default function Login() {
                   Password
                 </Label>
                 <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    {...register('password')}
-                    className="h-12 bg-secondary/50 border-border focus:border-accent focus:ring-accent/20 pr-10"
-                    disabled={isLoading}
-                    onFocus={() => setIsTyping(true)}
-                    onBlur={() => setIsTyping(false)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    tabIndex={-1}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-5 w-5" />
-                    ) : (
-                      <Eye className="h-5 w-5" />
-                    )}
+                  <Input id="password" type={showPassword ? 'text' : 'password'} placeholder="••••••••" {...register('password')} className="h-12 bg-secondary/50 border-border focus:border-accent focus:ring-accent/20 pr-10" disabled={isLoading} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors" tabIndex={-1}>
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
-                {errors.password && (
-                  <p className="text-sm text-destructive">{errors.password.message}</p>
-                )}
+                {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
               </div>
 
-              <Button
-                type="submit"
-                size="xl"
-                className="w-full"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
+              <Button type="submit" size="xl" className="w-full" disabled={isLoading}>
+                {isLoading ? <>
                     <Loader2 className="h-5 w-5 animate-spin" />
                     Signing in...
-                  </>
-                ) : (
-                  <>
+                  </> : <>
                     Sign in
                     <ArrowRight className="h-5 w-5" />
-                  </>
-                )}
+                  </>}
               </Button>
             </form>
 
@@ -204,6 +152,5 @@ export default function Login() {
           </div>
         </div>
       </div>
-    </div>
-  );
+    </div>;
 }
