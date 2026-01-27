@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { PWAInstallPrompt } from "@/components/ui/pwa-install-prompt";
 
 // Pages
 import Login from "./pages/Login";
@@ -15,6 +16,7 @@ import NotFound from "./pages/NotFound";
 import { FlowHRLayout } from "./components/layout/FlowHRLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
 import Employees from "./pages/admin/Employees";
+import EditEmployee from "./pages/admin/EditEmployee";
 import NewEmployee from "./pages/admin/NewEmployee";
 import Departments from "./pages/admin/Departments";
 import Attendance from "./pages/admin/Attendance";
@@ -22,6 +24,7 @@ import Salaries from "./pages/admin/Salaries";
 import Leave from "./pages/admin/Leave";
 import Permissions from "./pages/admin/Permissions";
 import Settings from "./pages/admin/Settings";
+import Recruitment from "./pages/admin/Recruitment";
 
 // Employee Pages
 import EmployeeDashboard from "./pages/employee/Dashboard";
@@ -34,6 +37,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <PWAInstallPrompt />
       <BrowserRouter>
         <AuthProvider>
           <Routes>
@@ -54,12 +58,14 @@ const App = () => (
               <Route path="dashboard" element={<AdminDashboard />} />
               <Route path="employees" element={<Employees />} />
               <Route path="employees/new" element={<NewEmployee />} />
+              <Route path="employees/:id/edit" element={<EditEmployee />} />
               <Route path="departments" element={<Departments />} />
               <Route path="attendance" element={<Attendance />} />
               <Route path="salaries" element={<Salaries />} />
               <Route path="leave" element={<Leave />} />
               <Route path="permissions" element={<Permissions />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="recruitment" element={<Recruitment />} />
             </Route>
 
             {/* Employee routes */}

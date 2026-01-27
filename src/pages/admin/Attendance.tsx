@@ -209,16 +209,16 @@ export default function Attendance() {
   };
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-foreground">Attendance</h1>
+          <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground">Attendance</h1>
           <p className="text-muted-foreground mt-1">Track and manage employee attendance</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button variant="accent" size="lg">
+            <Button variant="accent" size="lg" className="w-full sm:w-auto">
               <Plus className="h-5 w-5 mr-2" />
               Mark Attendance
             </Button>
@@ -249,7 +249,7 @@ export default function Attendance() {
                 </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>In Time</Label>
                   <Input
@@ -303,17 +303,17 @@ export default function Attendance() {
       {/* Date Picker */}
       <Card className="card-elevated">
         <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-muted-foreground" />
               <Input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-auto"
+                className="w-auto min-w-[150px]"
               />
             </div>
-            <Badge variant="secondary" className="text-sm">
+            <Badge variant="secondary" className="text-sm w-fit">
               {attendance.length} records
             </Badge>
           </div>
@@ -338,7 +338,8 @@ export default function Attendance() {
               </Button>
             </div>
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead>
@@ -366,6 +367,7 @@ export default function Attendance() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>

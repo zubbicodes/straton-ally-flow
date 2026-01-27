@@ -40,9 +40,11 @@ export function TopNav() {
         <div className="flex items-center gap-6">
           {/* Logo */}
           <Link to="/admin/dashboard" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-success flex items-center justify-center">
-              <Sparkles className="h-4 w-4 text-success-foreground" />
-            </div>
+            <img 
+              src="/logo.png" 
+              alt="FLOW by Straton Ally" 
+              className="w-32 h-32 rounded-lg object-contain mt-2"
+            />
           </Link>
 
           {/* Navigation Tabs */}

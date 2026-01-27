@@ -110,9 +110,9 @@ export default function AdminDashboard() {
       />
 
       {/* Row 1: 4 Metrics + Payroll + Schedule */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
         {/* Left: 2x2 Metrics Grid */}
-        <div className="col-span-2 grid grid-cols-2 gap-2">
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <MetricCard
             title="Attendance Rate"
             value={`${attendanceRate}%`}
@@ -159,7 +159,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Row 2: Attendance Heatmap + Project Table */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <AttendanceHeatmap rate={98} trend={2.5} />
         <ProjectStatusTable projects={projects} />
       </div>

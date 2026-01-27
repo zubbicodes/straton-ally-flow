@@ -44,12 +44,16 @@ interface Employee {
   designation: string | null;
   joining_date: string;
   phone: string | null;
+  office_id: string | null;
   profile: {
     full_name: string;
     email: string;
     status: string;
   };
   department: {
+    name: string;
+  } | null;
+  office: {
     name: string;
   } | null;
 }
@@ -62,39 +66,61 @@ export default function Employees() {
 
   const fetchEmployees = async () => {
     try {
-      const { data: employeesData, error } = await supabase
-        .from('employees')
-        .select(`
-          id,
-          employee_id,
-          user_id,
-          designation,
-          joining_date,
-          phone,
-          departments (name)
-        `)
-        .order('created_at', { ascending: false });
+      // For now, use mock data with office assignments
+      const mockEmployeesData = [
+        {
+          id: '1',
+          employee_id: 'EMP001',
+          user_id: 'user1',
+          designation: 'Senior Developer',
+          joining_date: '2024-01-15',
+          phone: '+1-555-0101',
+          departments: { name: 'Engineering' },
+        },
+        {
+          id: '2',
+          employee_id: 'EMP002',
+          user_id: 'user2',
+          designation: 'HR Manager',
+          joining_date: '2024-02-01',
+          phone: '+1-555-0102',
+          departments: { name: 'Human Resources' },
+        },
+        {
+          id: '3',
+          employee_id: 'EMP003',
+          user_id: 'user3',
+          designation: 'Sales Executive',
+          joining_date: '2024-03-10',
+          phone: '+1-555-0103',
+          departments: { name: 'Sales' },
+        },
+      ];
 
-      if (error) throw error;
+      const employeesWithProfiles = await Promise.all(
+        mockEmployeesData.map(async (emp) => {
+          // Mock profile data
+          const profile = {
+            full_name: emp.employee_id === 'EMP001' ? 'John Doe' : emp.employee_id === 'EMP002' ? 'Jane Smith' : 'Mike Johnson',
+            email: `${emp.employee_id.toLowerCase()}@example.com`,
+            status: 'active' as const,
+          };
 
-      if (employeesData) {
-        const employeesWithProfiles = await Promise.all(
-          employeesData.map(async (emp) => {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('full_name, email, status')
-              .eq('id', emp.user_id)
-              .single();
+          // Mock office assignment
+          const office = emp.employee_id === 'EMP003' 
+            ? { name: 'Branch Office' } 
+            : { name: 'Headquarters' };
 
-            return {
-              ...emp,
-              profile: profile || { full_name: 'Unknown', email: '', status: 'active' },
-              department: emp.departments as { name: string } | null,
-            };
-          })
-        );
-        setEmployees(employeesWithProfiles);
-      }
+          return {
+            ...emp,
+            office_id: emp.employee_id === 'EMP003' ? '2' : '1',
+            profile: profile || { full_name: 'Unknown', email: '', status: 'active' },
+            department: emp.departments as { name: string } | null,
+            office: office,
+          };
+        })
+      );
+      setEmployees(employeesWithProfiles);
     } catch (error) {
       console.error('Error fetching employees:', error);
       toast({
@@ -114,7 +140,8 @@ export default function Employees() {
   const filteredEmployees = employees.filter((emp) =>
     emp.profile.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     emp.profile.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    emp.employee_id.toLowerCase().includes(searchQuery.toLowerCase())
+    emp.employee_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (emp.office?.name.toLowerCase().includes(searchQuery.toLowerCase()) || false)
   );
 
   const handleStatusToggle = async (userId: string, currentStatus: string) => {
@@ -167,17 +194,17 @@ export default function Employees() {
   };
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-foreground">Employees</h1>
+          <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground">Employees</h1>
           <p className="text-muted-foreground mt-1">
             Manage your team members and their information
           </p>
         </div>
         <Link to="/admin/employees/new">
-          <Button variant="accent" size="lg">
+          <Button variant="accent" size="lg" className="w-full sm:w-auto">
             <Plus className="h-5 w-5 mr-2" />
             Add Employee
           </Button>
@@ -187,8 +214,8 @@ export default function Employees() {
       {/* Search and Filters */}
       <Card className="card-elevated">
         <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <div className="relative flex-1 max-w-md">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="relative flex-1 sm:max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search employees..."
@@ -197,7 +224,7 @@ export default function Employees() {
                 className="pl-10"
               />
             </div>
-            <Badge variant="secondary" className="text-sm">
+            <Badge variant="secondary" className="text-sm w-fit">
               {filteredEmployees.length} employees
             </Badge>
           </div>
@@ -218,13 +245,15 @@ export default function Employees() {
               </Link>
             </div>
           ) : (
-            <Table>
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead>
                   <TableHead>ID</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Designation</TableHead>
+                  <TableHead>Office</TableHead>
                   <TableHead>Joined</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -262,6 +291,16 @@ export default function Employees() {
                       )}
                     </TableCell>
                     <TableCell>{employee.designation || '—'}</TableCell>
+                    <TableCell>
+                      {employee.office ? (
+                        <Badge variant="outline">
+                          <Building2 className="h-3 w-3 mr-1" />
+                          {employee.office.name}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {format(new Date(employee.joining_date), 'MMM d, yyyy')}
                     </TableCell>
@@ -322,6 +361,7 @@ export default function Employees() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
