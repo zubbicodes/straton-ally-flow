@@ -82,7 +82,7 @@ export default function Login() {
         </div>
         
         {/* Brand overlay */}
-        <div className="absolute bottom-12 left-12 z-20">
+        <div className="absolute top-12 left-12 z-20">
           <h1 className="text-5xl font-display font-bold text-foreground">FLOW</h1>
           <p className="text-lg text-muted-foreground mt-2">by STRATON ALLY</p>
         </div>
