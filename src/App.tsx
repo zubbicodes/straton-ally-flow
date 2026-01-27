@@ -27,7 +27,14 @@ import Settings from "./pages/admin/Settings";
 import Recruitment from "./pages/admin/Recruitment";
 
 // Employee Pages
-import EmployeeDashboard from "./pages/employee/Dashboard";
+import { EmployeeLayoutNew } from "./components/layout/EmployeeLayoutNew";
+import EmployeeDashboard from "./pages/employee/DashboardFinal";
+import AttendanceSystem from "./pages/employee/Attendance";
+import TasksPage from "./pages/employee/Tasks";
+import TeamPage from "./pages/employee/Team";
+import SalaryPage from "./pages/employee/Salary";
+import NotificationsPage from "./pages/employee/Notifications";
+import ChatPage from "./pages/employee/Chat";
 
 const queryClient = new QueryClient();
 
@@ -73,18 +80,19 @@ const App = () => (
               path="/employee"
               element={
                 <ProtectedRoute allowedRoles={['employee']}>
-                  <EmployeeDashboard />
+                  <EmployeeLayoutNew />
                 </ProtectedRoute>
               }
-            />
-            <Route
-              path="/employee/dashboard"
-              element={
-                <ProtectedRoute allowedRoles={['employee']}>
-                  <EmployeeDashboard />
-                </ProtectedRoute>
-              }
-            />
+            >
+              <Route index element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<EmployeeDashboard />} />
+              <Route path="attendance" element={<AttendanceSystem />} />
+              <Route path="tasks" element={<TasksPage />} />
+              <Route path="team" element={<TeamPage />} />
+              <Route path="salary" element={<SalaryPage />} />
+              <Route path="notifications" element={<NotificationsPage />} />
+              <Route path="chat" element={<ChatPage />} />
+            </Route>
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
