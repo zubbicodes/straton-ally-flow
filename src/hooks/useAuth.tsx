@@ -9,6 +9,8 @@ interface AuthContextType {
   session: Session | null;
   isLoading: boolean;
   refetch: () => Promise<void>;
+  skipRedirect: boolean;
+  setSkipRedirect: (skip: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,6 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [skipRedirect, setSkipRedirect] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -32,17 +35,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, newSession) => {
         setSession(newSession);
         
-        if (event === 'SIGNED_IN' && newSession) {
+        if (event === 'SIGNED_IN' && newSession && !skipRedirect) {
           // Use setTimeout to prevent state update conflicts
           setTimeout(async () => {
             const authUser = await fetchUser();
-            if (authUser?.role) {
+            // Check if this is a user creation that should skip redirect
+            const shouldSkip = newSession.user?.user_metadata?.created_by_admin;
+            
+            // Only redirect if we have a user with a role and we're not on admin pages
+            // and this isn't a user creation operation
+            if (authUser?.role && !location.pathname.startsWith('/admin') && !shouldSkip) {
               const redirectPath = getRedirectPath(authUser.role);
               navigate(redirectPath, { replace: true });
             }
           }, 0);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
+          setSkipRedirect(false);
           navigate('/login', { replace: true });
         }
       }
@@ -67,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, isLoading, refetch }}>
+    <AuthContext.Provider value={{ user, session, isLoading, refetch, skipRedirect, setSkipRedirect }}>
       {children}
     </AuthContext.Provider>
   );

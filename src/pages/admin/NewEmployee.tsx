@@ -17,16 +17,16 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { createUserAsAdmin } from '@/lib/auth-service';
 import { supabase } from '@/integrations/supabase/client';
 
 const employeeSchema = z.object({
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
   email: z
     .string()
-    .email('Invalid email')
-    .refine((email) => email.endsWith('@stratonally.com'), 'Must be @stratonally.com email'),
+    .min(1, 'Email username is required')
+    .regex(/^[a-zA-Z0-9._-]+$/, 'Invalid email username format'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  employeeId: z.string().min(1, 'Employee ID is required'),
   departmentId: z.string().optional(),
   designation: z.string().optional(),
   joiningDate: z.string().min(1, 'Joining date is required'),
@@ -49,6 +49,7 @@ export default function NewEmployee() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [generatedEmployeeId, setGeneratedEmployeeId] = useState('');
 
   const {
     register,
@@ -64,6 +65,40 @@ export default function NewEmployee() {
     },
   });
 
+  const selectedRole = watch('role');
+
+  // Generate employee ID when role changes
+  useEffect(() => {
+    const generateEmployeeId = async () => {
+      try {
+        const prefix = selectedRole === 'admin' ? 'SAADM' : 'SAEMP';
+        
+        // Get the latest employee ID for this role
+        const { data: latestEmployee } = await supabase
+          .from('employees')
+          .select('employee_id')
+          .like('employee_id', `${prefix}%`)
+          .order('employee_id', { ascending: false })
+          .limit(1)
+          .single();
+
+        let newId = `${prefix}001`;
+        if (latestEmployee?.employee_id) {
+          const currentNumber = parseInt(latestEmployee.employee_id.replace(prefix, ''));
+          newId = `${prefix}${String(currentNumber + 1).padStart(3, '0')}`;
+        }
+
+        setGeneratedEmployeeId(newId);
+      } catch (error) {
+        // If no employees exist yet, start with 001
+        const prefix = selectedRole === 'admin' ? 'SAADM' : 'SAEMP';
+        setGeneratedEmployeeId(`${prefix}001`);
+      }
+    };
+
+    generateEmployeeId();
+  }, [selectedRole]);
+
   useEffect(() => {
     async function fetchDepartments() {
       const { data } = await supabase.from('departments').select('id, name').order('name');
@@ -74,22 +109,17 @@ export default function NewEmployee() {
 
   const onSubmit = async (data: EmployeeFormData) => {
     setIsLoading(true);
+    
     try {
-      // Create auth user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
+      // Create auth user using admin service
+      const user = await createUserAsAdmin({
+        email: `${data.email}@stratonally.com`,
         password: data.password,
-        options: {
-          data: {
-            full_name: data.fullName,
-          },
-        },
+        fullName: data.fullName,
+        role: data.role,
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error('Failed to create user');
-
-      const userId = authData.user.id;
+      const userId = user.id;
 
       // Update profile with full name
       await supabase
@@ -105,12 +135,12 @@ export default function NewEmployee() {
 
       if (roleError) throw roleError;
 
-      // Create employee record
+      // Create employee record with generated ID
       const { data: employeeData, error: empError } = await supabase
         .from('employees')
         .insert({
           user_id: userId,
-          employee_id: data.employeeId,
+          employee_id: generatedEmployeeId,
           department_id: data.departmentId || null,
           designation: data.designation || null,
           joining_date: data.joiningDate,
@@ -134,7 +164,7 @@ export default function NewEmployee() {
 
       toast({
         title: 'Employee created',
-        description: `${data.fullName} has been added successfully`,
+        description: `${data.fullName} (${generatedEmployeeId}) has been added successfully`,
       });
 
       navigate('/admin/employees');
@@ -185,17 +215,32 @@ export default function NewEmployee() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="john@stratonally.com"
-                {...register('email')}
-                className="h-11"
-              />
+              <Label htmlFor="email">Email Username *</Label>
+              <div className="flex">
+                <Input
+                  id="email"
+                  placeholder="john.doe"
+                  {...register('email')}
+                  className="h-11 rounded-r-none"
+                />
+                <div className="flex items-center px-3 h-11 border border-l-0 border-input bg-muted rounded-r-md text-sm text-muted-foreground">
+                  @stratonally.com
+                </div>
+              </div>
               {errors.email && (
                 <p className="text-sm text-destructive">{errors.email.message}</p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="employeeId">Employee ID</Label>
+              <Input
+                id="employeeId"
+                value={generatedEmployeeId}
+                disabled
+                className="h-11 bg-muted"
+              />
+              <p className="text-xs text-muted-foreground">Auto-generated based on role</p>
             </div>
 
             <div className="space-y-2">
@@ -213,19 +258,6 @@ export default function NewEmployee() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="employeeId">Employee ID *</Label>
-              <Input
-                id="employeeId"
-                placeholder="EMP001"
-                {...register('employeeId')}
-                className="h-11"
-              />
-              {errors.employeeId && (
-                <p className="text-sm text-destructive">{errors.employeeId.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="phone">Phone</Label>
               <Input
                 id="phone"
@@ -238,7 +270,7 @@ export default function NewEmployee() {
             <div className="space-y-2">
               <Label htmlFor="role">Role *</Label>
               <Select
-                defaultValue="employee"
+                value={selectedRole}
                 onValueChange={(value) => setValue('role', value as 'admin' | 'employee')}
               >
                 <SelectTrigger className="h-11">

@@ -44,16 +44,14 @@ interface Employee {
   designation: string | null;
   joining_date: string;
   phone: string | null;
-  office_id: string | null;
+  address: string | null;
+  emergency_contact: string | null;
   profile: {
     full_name: string;
     email: string;
     status: string;
   };
   department: {
-    name: string;
-  } | null;
-  office: {
     name: string;
   } | null;
 }
@@ -66,61 +64,54 @@ export default function Employees() {
 
   const fetchEmployees = async () => {
     try {
-      // For now, use mock data with office assignments
-      const mockEmployeesData = [
-        {
-          id: '1',
-          employee_id: 'EMP001',
-          user_id: 'user1',
-          designation: 'Senior Developer',
-          joining_date: '2024-01-15',
-          phone: '+1-555-0101',
-          departments: { name: 'Engineering' },
-        },
-        {
-          id: '2',
-          employee_id: 'EMP002',
-          user_id: 'user2',
-          designation: 'HR Manager',
-          joining_date: '2024-02-01',
-          phone: '+1-555-0102',
-          departments: { name: 'Human Resources' },
-        },
-        {
-          id: '3',
-          employee_id: 'EMP003',
-          user_id: 'user3',
-          designation: 'Sales Executive',
-          joining_date: '2024-03-10',
-          phone: '+1-555-0103',
-          departments: { name: 'Sales' },
-        },
-      ];
+      // First, fetch all employees
+      const { data: employeesData, error: employeesError } = await supabase
+        .from('employees')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      const employeesWithProfiles = await Promise.all(
-        mockEmployeesData.map(async (emp) => {
-          // Mock profile data
-          const profile = {
-            full_name: emp.employee_id === 'EMP001' ? 'John Doe' : emp.employee_id === 'EMP002' ? 'Jane Smith' : 'Mike Johnson',
-            email: `${emp.employee_id.toLowerCase()}@example.com`,
-            status: 'active' as const,
-          };
+      if (employeesError) throw employeesError;
 
-          // Mock office assignment
-          const office = emp.employee_id === 'EMP003' 
-            ? { name: 'Branch Office' } 
-            : { name: 'Headquarters' };
+      // Then fetch profiles for all employees
+      const userIds = employeesData?.map(emp => emp.user_id) || [];
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, status')
+        .in('id', userIds);
 
-          return {
-            ...emp,
-            office_id: emp.employee_id === 'EMP003' ? '2' : '1',
-            profile: profile || { full_name: 'Unknown', email: '', status: 'active' },
-            department: emp.departments as { name: string } | null,
-            office: office,
-          };
-        })
-      );
-      setEmployees(employeesWithProfiles);
+      // Then fetch departments for employees that have them
+      const departmentIds = employeesData?.map(emp => emp.department_id).filter(Boolean) || [];
+      const { data: departmentsData } = await supabase
+        .from('departments')
+        .select('id, name')
+        .in('id', departmentIds);
+
+      // Transform the data to match the expected interface
+      const transformedEmployees = employeesData?.map((emp: any) => {
+        const profile = profilesData?.find(p => p.id === emp.user_id);
+        const department = departmentsData?.find(d => d.id === emp.department_id);
+
+        return {
+          id: emp.id,
+          employee_id: emp.employee_id,
+          user_id: emp.user_id,
+          designation: emp.designation,
+          joining_date: emp.joining_date,
+          phone: emp.phone,
+          address: emp.address,
+          emergency_contact: emp.emergency_contact,
+          profile: {
+            full_name: profile?.full_name || 'Unknown',
+            email: profile?.email || '',
+            status: profile?.status || 'active',
+          },
+          department: department ? {
+            name: department.name
+          } : null,
+        };
+      }) || [];
+
+      setEmployees(transformedEmployees);
     } catch (error) {
       console.error('Error fetching employees:', error);
       toast({
@@ -141,7 +132,7 @@ export default function Employees() {
     emp.profile.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     emp.profile.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     emp.employee_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (emp.office?.name.toLowerCase().includes(searchQuery.toLowerCase()) || false)
+    (emp.department?.name.toLowerCase().includes(searchQuery.toLowerCase()) || false)
   );
 
   const handleStatusToggle = async (userId: string, currentStatus: string) => {
@@ -253,7 +244,6 @@ export default function Employees() {
                   <TableHead>ID</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Designation</TableHead>
-                  <TableHead>Office</TableHead>
                   <TableHead>Joined</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
@@ -291,16 +281,6 @@ export default function Employees() {
                       )}
                     </TableCell>
                     <TableCell>{employee.designation || '—'}</TableCell>
-                    <TableCell>
-                      {employee.office ? (
-                        <Badge variant="outline">
-                          <Building2 className="h-3 w-3 mr-1" />
-                          {employee.office.name}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
                     <TableCell>
                       {format(new Date(employee.joining_date), 'MMM d, yyyy')}
                     </TableCell>

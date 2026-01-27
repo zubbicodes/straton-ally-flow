@@ -8,10 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { signIn, isAllowedEmail, getRedirectPath, getUserRole } from '@/lib/auth';
+import { signIn, getRedirectPath, getUserRole } from '@/lib/auth';
 import { AnimatedCharacters } from '@/components/ui/animated-characters';
 const loginSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Invalid email address').refine(email => isAllowedEmail(email), 'Only @stratonally.com email addresses are allowed'),
+  email: z.string().min(1, 'Email username is required').regex(/^[a-zA-Z0-9._-]+$/, 'Invalid email username format'),
   password: z.string().min(1, 'Password is required')
 });
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -37,10 +37,12 @@ export default function Login() {
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
+      // Append @stratonally.com to the username
+      const fullEmail = `${data.email}@stratonally.com`;
       const {
         user,
         error
-      } = await signIn(data.email, data.password);
+      } = await signIn(fullEmail, data.password);
       if (error) {
         toast({
           title: 'Sign in failed',
@@ -114,9 +116,23 @@ export default function Login() {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-sm font-medium">
-                  Email
+                  Email Username
                 </Label>
-                <Input id="email" type="email" placeholder="name@stratonally.com" {...register('email')} className="h-12 bg-secondary/50 border-border focus:border-accent focus:ring-accent/20" disabled={isLoading} onFocus={() => setIsTyping(true)} onBlur={() => setIsTyping(false)} />
+                <div className="flex">
+                  <Input 
+                    id="email" 
+                    type="text" 
+                    placeholder="john.doe" 
+                    {...register('email')} 
+                    className="h-12 bg-secondary/50 border-border focus:border-accent focus:ring-accent/20 rounded-r-none" 
+                    disabled={isLoading} 
+                    onFocus={() => setIsTyping(true)} 
+                    onBlur={() => setIsTyping(false)} 
+                  />
+                  <div className="flex items-center px-3 h-12 border border-l-0 border-input bg-muted rounded-r-md text-sm text-muted-foreground">
+                    @stratonally.com
+                  </div>
+                </div>
                 {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
               </div>
 
