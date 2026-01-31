@@ -160,22 +160,64 @@ export default function Employees() {
   };
 
   const handleDelete = async (employeeId: string) => {
-    if (!confirm('Are you sure you want to delete this employee?')) return;
+    if (!confirm('Are you sure you want to delete this employee? This will permanently remove all their data.')) return;
+
+    const employee = employees.find(e => e.id === employeeId);
+    if (!employee) {
+      toast({
+        title: 'Error',
+        description: 'Employee not found',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     try {
-      const { error } = await supabase
+      // Delete in order to respect foreign key constraints (if any) or logical order
+      
+      // 1. Delete salaries
+      const { error: salariesError } = await supabase
+        .from('salaries')
+        .delete()
+        .eq('employee_id', employeeId);
+      if (salariesError) console.error('Error deleting salaries:', salariesError);
+
+      // 2. Delete attendance records
+      const { error: attendanceError } = await supabase
+        .from('attendance')
+        .delete()
+        .eq('employee_id', employeeId);
+      if (attendanceError) console.error('Error deleting attendance:', attendanceError);
+
+      // 3. Delete employee record
+      const { error: empError } = await supabase
         .from('employees')
         .delete()
         .eq('id', employeeId);
+      
+      if (empError) throw empError;
 
-      if (error) throw error;
+      // 4. Delete user roles
+      const { error: rolesError } = await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', employee.user_id);
+      if (rolesError) console.error('Error deleting user roles:', rolesError);
+
+      // 5. Delete profile
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', employee.user_id);
+      if (profileError) console.error('Error deleting profile:', profileError);
 
       toast({
         title: 'Employee deleted',
-        description: 'Employee record has been removed',
+        description: 'Employee record and associated data have been removed',
       });
       fetchEmployees();
     } catch (error) {
+      console.error('Error deleting employee:', error);
       toast({
         title: 'Error',
         description: 'Failed to delete employee',

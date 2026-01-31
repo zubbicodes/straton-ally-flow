@@ -35,6 +35,7 @@ import TeamPage from "./pages/employee/Team";
 import SalaryPage from "./pages/employee/Salary";
 import NotificationsPage from "./pages/employee/Notifications";
 import ChatPage from "./pages/employee/Chat";
+import EmployeeSettings from "./pages/employee/Settings";
 
 const queryClient = new QueryClient();
 
@@ -92,6 +93,7 @@ const App = () => (
               <Route path="salary" element={<SalaryPage />} />
               <Route path="notifications" element={<NotificationsPage />} />
               <Route path="chat" element={<ChatPage />} />
+              <Route path="settings" element={<EmployeeSettings />} />
             </Route>
 
             {/* Catch-all */}

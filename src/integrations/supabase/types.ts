@@ -139,6 +139,7 @@ export type Database = {
           designation: string | null
           emergency_contact: string | null
           employee_id: string
+          gender: string | null
           id: string
           joining_date: string
           office_id: string | null
@@ -153,6 +154,7 @@ export type Database = {
           designation?: string | null
           emergency_contact?: string | null
           employee_id: string
+          gender?: string | null
           id?: string
           joining_date: string
           office_id?: string | null
@@ -167,6 +169,7 @@ export type Database = {
           designation?: string | null
           emergency_contact?: string | null
           employee_id?: string
+          gender?: string | null
           id?: string
           joining_date?: string
           office_id?: string | null

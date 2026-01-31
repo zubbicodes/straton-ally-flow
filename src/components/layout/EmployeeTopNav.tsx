@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Search, Bell, MessageSquare, LogOut, Sparkles } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import {
   DropdownMenu,
@@ -98,6 +98,7 @@ export function EmployeeTopNav() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-8 w-8 rounded-full p-0">
                 <Avatar className="h-8 w-8">
+                  <AvatarImage src={user?.avatarUrl || ''} />
                   <AvatarFallback className="bg-success text-success-foreground text-xs font-medium">
                     {firstName.charAt(0)}
                   </AvatarFallback>
@@ -110,7 +111,7 @@ export function EmployeeTopNav() {
                 <p className="text-xs text-muted-foreground">{user?.email}</p>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer">
+              <DropdownMenuItem className="cursor-pointer" onClick={() => navigate('/employee/settings')}>
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />

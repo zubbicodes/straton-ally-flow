@@ -35,24 +35,52 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
+const optionalUuid = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().uuid().optional(),
+);
+
+const optionalNumberString = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().regex(/^\d+(\.\d+)?$/, 'Invalid amount').optional(),
+);
+
 const employeeSchema = z.object({
   full_name: z.string().min(2, 'Full name must be at least 2 characters'),
+  gender: z.enum(['male', 'female', 'other'], { required_error: 'Gender is required' }),
   email: z.string().email('Invalid email address'),
   phone: z.string().optional(),
   designation: z.string().optional(),
-  department_id: z.string().uuid().optional(),
-  joining_date: z.string(),
+  department_id: optionalUuid,
+  joining_date: z.string().min(1, 'Joining date is required'),
   address: z.string().optional(),
   emergency_contact: z.string().optional(),
   status: z.enum(['active', 'inactive']),
+  salary_type: z.enum(['monthly', 'hourly']).optional(),
+  salary_amount: optionalNumberString,
+  salary_effective_date: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().optional(),
+  ),
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
+
+interface SalaryRecord {
+  id: string;
+  employee_id: string;
+  salary_type: 'monthly' | 'hourly';
+  amount: number;
+  effective_date: string;
+  is_current: boolean;
+  created_at: string;
+}
 
 interface Employee {
   id: string;
   employee_id: string;
   user_id: string;
+  gender: string | null;
   designation: string | null;
   joining_date: string;
   phone: string | null;
@@ -95,6 +123,7 @@ export default function EditEmployee() {
   const [departments, setDepartments] = useState<Array<{ id: string; name: string }>>([]);
   const [offices, setOffices] = useState<Array<{ id: string; name: string }>>([]);
   const [employee, setEmployee] = useState<Employee | null>(null);
+  const [currentSalary, setCurrentSalary] = useState<SalaryRecord | null>(null);
 
   const form = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeSchema),
@@ -105,15 +134,37 @@ export default function EditEmployee() {
       if (!id) return;
 
       try {
-        const { data: employeeData, error: employeeError } = await supabase
+        const baseSelect =
+          'id, employee_id, user_id, designation, joining_date, phone, address, emergency_contact, department_id';
+        const selectWithGender = `${baseSelect}, gender`;
+        const selectWithoutGender = baseSelect;
+
+        const firstAttempt = await supabase
           .from('employees')
-          .select('id, employee_id, user_id, designation, joining_date, phone, address, emergency_contact, department_id')
+          .select(selectWithGender)
           .eq('id', id)
           .single();
 
-        if (employeeError) throw employeeError;
+        const firstErrorMessage =
+          firstAttempt.error && typeof firstAttempt.error === 'object' && 'message' in firstAttempt.error
+            ? String((firstAttempt.error as { message?: unknown }).message)
+            : '';
 
-        if (employeeData) {
+        const shouldRetryWithoutGender =
+          Boolean(firstAttempt.error) &&
+          firstErrorMessage.toLowerCase().includes('gender') &&
+          (firstErrorMessage.toLowerCase().includes('does not exist') ||
+            firstErrorMessage.toLowerCase().includes('column'));
+
+        const employeeResult = shouldRetryWithoutGender
+          ? await supabase.from('employees').select(selectWithoutGender).eq('id', id).single()
+          : firstAttempt;
+
+        if (employeeResult.error) throw employeeResult.error;
+
+        if (employeeResult.data) {
+          const employeeData = employeeResult.data as typeof employeeResult.data & { gender?: string | null };
+
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .select('full_name, email, status, avatar_url')
@@ -128,10 +179,45 @@ export default function EditEmployee() {
 
           if (departmentError) throw departmentError;
 
+          const currentSalaryResult = await supabase
+            .from('salaries')
+            .select('id, employee_id, salary_type, amount, effective_date, is_current, created_at')
+            .eq('employee_id', employeeData.id)
+            .eq('is_current', true)
+            .maybeSingle();
+
+          if (currentSalaryResult.error) throw currentSalaryResult.error;
+
+          const salaryFallbackResult = currentSalaryResult.data
+            ? currentSalaryResult
+            : await supabase
+                .from('salaries')
+                .select('id, employee_id, salary_type, amount, effective_date, is_current, created_at')
+                .eq('employee_id', employeeData.id)
+                .order('effective_date', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+          if (salaryFallbackResult.error) throw salaryFallbackResult.error;
+
+          const normalizedSalary = salaryFallbackResult.data
+            ? {
+                id: salaryFallbackResult.data.id,
+                employee_id: salaryFallbackResult.data.employee_id,
+                salary_type: salaryFallbackResult.data.salary_type as 'monthly' | 'hourly',
+                amount: salaryFallbackResult.data.amount,
+                effective_date: salaryFallbackResult.data.effective_date,
+                is_current: salaryFallbackResult.data.is_current,
+                created_at: salaryFallbackResult.data.created_at,
+              }
+            : null;
+
           const normalizedEmployee: Employee = {
             id: employeeData.id,
             employee_id: employeeData.employee_id,
             user_id: employeeData.user_id,
+            gender: employeeData.gender ?? null,
             designation: employeeData.designation,
             joining_date: employeeData.joining_date,
             phone: employeeData.phone,
@@ -149,8 +235,10 @@ export default function EditEmployee() {
           };
 
           setEmployee(normalizedEmployee);
+          setCurrentSalary(normalizedSalary);
           form.reset({
             full_name: normalizedEmployee.profile.full_name,
+            gender: (normalizedEmployee.gender as 'male' | 'female' | 'other') || 'male',
             email: normalizedEmployee.profile.email,
             phone: normalizedEmployee.phone || '',
             designation: normalizedEmployee.designation || '',
@@ -159,13 +247,18 @@ export default function EditEmployee() {
             address: normalizedEmployee.address || '',
             emergency_contact: normalizedEmployee.emergency_contact || '',
             status: normalizedEmployee.profile.status as 'active' | 'inactive',
+            salary_type: normalizedSalary?.salary_type,
+            salary_amount: normalizedSalary ? String(normalizedSalary.amount) : '',
+            salary_effective_date: normalizedSalary?.effective_date || normalizedEmployee.joining_date,
           });
         }
       } catch (error) {
+        const errorMessage =
+          error && typeof error === 'object' && 'message' in error ? String((error as { message?: unknown }).message) : '';
         console.error('Error fetching employee:', error);
         toast({
           title: 'Error',
-          description: 'Failed to fetch employee data',
+          description: errorMessage ? `Failed to fetch employee data: ${errorMessage}` : 'Failed to fetch employee data',
           variant: 'destructive',
         });
       } finally {
@@ -196,11 +289,24 @@ export default function EditEmployee() {
 
     setIsSaving(true);
     try {
+      const hasAnySalaryField = Boolean(data.salary_type) || Boolean(data.salary_amount) || Boolean(data.salary_effective_date);
+      const shouldUpdateSalary = Boolean(data.salary_type) && Boolean(data.salary_amount) && Boolean(data.salary_effective_date);
+
+      if (hasAnySalaryField && !shouldUpdateSalary) {
+        toast({
+          title: 'Error',
+          description: 'Please fill salary type, amount, and effective date',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       // Update profile
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
           full_name: data.full_name,
+          email: data.email,
           status: data.status,
         })
         .eq('id', employee.user_id);
@@ -208,9 +314,11 @@ export default function EditEmployee() {
       if (profileError) throw profileError;
 
       // Update employee record
-      const { error: employeeError } = await supabase
+      const employeeUpdateResult = await supabase
         .from('employees')
         .update({
+          gender: data.gender,
+          joining_date: data.joining_date,
           designation: data.designation,
           department_id: data.department_id || null,
           phone: data.phone,
@@ -219,7 +327,78 @@ export default function EditEmployee() {
         })
         .eq('id', id);
 
-      if (employeeError) throw employeeError;
+      if (employeeUpdateResult.error) {
+        const msg =
+          typeof employeeUpdateResult.error === 'object' && 'message' in employeeUpdateResult.error
+            ? String((employeeUpdateResult.error as { message?: unknown }).message)
+            : '';
+        const canRetryWithoutGender =
+          msg.toLowerCase().includes('gender') &&
+          (msg.toLowerCase().includes('does not exist') || msg.toLowerCase().includes('column'));
+
+        if (!canRetryWithoutGender) throw employeeUpdateResult.error;
+
+        const { error: retryError } = await supabase
+          .from('employees')
+          .update({
+            joining_date: data.joining_date,
+            designation: data.designation,
+            department_id: data.department_id || null,
+            phone: data.phone,
+            address: data.address,
+            emergency_contact: data.emergency_contact,
+          })
+          .eq('id', id);
+
+        if (retryError) throw retryError;
+      }
+
+      if (shouldUpdateSalary) {
+        const nextSalaryType = data.salary_type as 'monthly' | 'hourly';
+        const nextSalaryAmount = parseFloat(data.salary_amount as string);
+        const nextSalaryEffectiveDate = data.salary_effective_date as string;
+
+        const isSameAsCurrent =
+          currentSalary &&
+          currentSalary.salary_type === nextSalaryType &&
+          currentSalary.amount === nextSalaryAmount &&
+          currentSalary.effective_date === nextSalaryEffectiveDate &&
+          currentSalary.is_current === true;
+
+        if (!isSameAsCurrent) {
+          const { error: markNotCurrentError } = await supabase
+            .from('salaries')
+            .update({ is_current: false })
+            .eq('employee_id', id)
+            .eq('is_current', true);
+
+          if (markNotCurrentError) throw markNotCurrentError;
+
+          const { error: insertSalaryError, data: insertedSalary } = await supabase
+            .from('salaries')
+            .insert({
+              employee_id: id,
+              salary_type: nextSalaryType,
+              amount: nextSalaryAmount,
+              effective_date: nextSalaryEffectiveDate,
+              is_current: true,
+            })
+            .select('id, employee_id, salary_type, amount, effective_date, is_current, created_at')
+            .single();
+
+          if (insertSalaryError) throw insertSalaryError;
+
+          setCurrentSalary({
+            id: insertedSalary.id,
+            employee_id: insertedSalary.employee_id,
+            salary_type: insertedSalary.salary_type as 'monthly' | 'hourly',
+            amount: insertedSalary.amount,
+            effective_date: insertedSalary.effective_date,
+            is_current: insertedSalary.is_current,
+            created_at: insertedSalary.created_at,
+          });
+        }
+      }
 
       toast({
         title: 'Success',
@@ -329,6 +508,22 @@ export default function EditEmployee() {
                 )}
               </div>
               <div className="space-y-2">
+                <Label>Gender</Label>
+                <Select value={form.watch('gender')} onValueChange={(value) => form.setValue('gender', value as 'male' | 'female' | 'other')}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select gender" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="male">Male</SelectItem>
+                    <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.formState.errors.gender && (
+                  <p className="text-sm text-destructive">{form.formState.errors.gender.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
                 <Label>Email Address</Label>
                 <Input
                   {...form.register('email')}
@@ -367,6 +562,9 @@ export default function EditEmployee() {
                     ))}
                   </SelectContent>
                 </Select>
+                {form.formState.errors.department_id && (
+                  <p className="text-sm text-destructive">{form.formState.errors.department_id.message}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Joining Date</Label>
@@ -374,6 +572,9 @@ export default function EditEmployee() {
                   {...form.register('joining_date')}
                   type="date"
                 />
+                {form.formState.errors.joining_date && (
+                  <p className="text-sm text-destructive">{form.formState.errors.joining_date.message}</p>
+                )}
               </div>
             </div>
             <div className="space-y-2">
@@ -403,6 +604,59 @@ export default function EditEmployee() {
                 </SelectContent>
               </Select>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="card-elevated">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Salary Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Salary Type</Label>
+                <Select
+                  value={form.watch('salary_type')}
+                  onValueChange={(value) => form.setValue('salary_type', value as 'monthly' | 'hourly')}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="hourly">Hourly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Amount</Label>
+                <Input
+                  {...form.register('salary_amount')}
+                  type="number"
+                  placeholder="0.00"
+                />
+                {form.formState.errors.salary_amount && (
+                  <p className="text-sm text-destructive">{form.formState.errors.salary_amount.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Effective Date</Label>
+                <Input
+                  {...form.register('salary_effective_date')}
+                  type="date"
+                />
+              </div>
+            </div>
+            {currentSalary ? (
+              <div className="text-sm text-muted-foreground">
+                Current: {currentSalary.amount} ({currentSalary.salary_type}) effective {format(new Date(currentSalary.effective_date), 'MMM d, yyyy')}
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">No salary record found</div>
+            )}
           </CardContent>
         </Card>
 

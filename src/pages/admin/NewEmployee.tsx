@@ -22,6 +22,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 const employeeSchema = z.object({
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
+  gender: z.enum(['male', 'female', 'other'], { required_error: 'Gender is required' }),
   email: z
     .string()
     .min(1, 'Email username is required')
@@ -141,6 +142,7 @@ export default function NewEmployee() {
         .insert({
           user_id: userId,
           employee_id: generatedEmployeeId,
+          gender: data.gender,
           department_id: data.departmentId || null,
           designation: data.designation || null,
           joining_date: data.joiningDate,
@@ -159,6 +161,7 @@ export default function NewEmployee() {
           salary_type: data.salaryType,
           amount: parseFloat(data.salaryAmount),
           effective_date: data.joiningDate,
+          is_current: true,
         });
       }
 
@@ -211,6 +214,23 @@ export default function NewEmployee() {
               />
               {errors.fullName && (
                 <p className="text-sm text-destructive">{errors.fullName.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gender">Gender *</Label>
+              <Select onValueChange={(value) => setValue('gender', value as 'male' | 'female' | 'other')}>
+                <SelectTrigger className="h-11">
+                  <SelectValue placeholder="Select gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">Male</SelectItem>
+                  <SelectItem value="female">Female</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.gender && (
+                <p className="text-sm text-destructive">{errors.gender.message}</p>
               )}
             </div>
 
