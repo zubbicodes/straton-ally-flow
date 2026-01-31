@@ -48,7 +48,7 @@ interface AccessControl {
   office_id: string;
   access_level: 'full' | 'restricted' | 'read_only';
   allowed_areas: string[];
-  time_restrictions: any;
+  time_restrictions: Record<string, { start: string; end: string }> | null;
   ip_override: boolean;
   is_active: boolean;
   effective_date: string;

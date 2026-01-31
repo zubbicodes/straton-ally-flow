@@ -111,10 +111,10 @@ export default function Departments() {
       setEditingDept(null);
       setFormData({ name: '', description: '' });
       fetchDepartments();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to save department',
+        description: error instanceof Error ? error.message : 'Failed to save department',
         variant: 'destructive',
       });
     }
@@ -139,10 +139,10 @@ export default function Departments() {
         description: 'Department deleted',
       });
       fetchDepartments();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to delete department',
+        description: error instanceof Error ? error.message : 'Failed to delete department',
         variant: 'destructive',
       });
     }

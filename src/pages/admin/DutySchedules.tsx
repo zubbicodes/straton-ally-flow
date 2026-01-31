@@ -201,7 +201,7 @@ export default function DutySchedules() {
     }
   };
 
-  const getShiftTypeColor = (shiftType: string) => {
+  const getShiftTypeColor = (shiftType: string): 'default' | 'secondary' | 'outline' | 'destructive' => {
     switch (shiftType) {
       case 'regular':
         return 'default';
@@ -288,7 +288,7 @@ export default function DutySchedules() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <p className="font-medium">{schedule.schedule_name}</p>
-                          <Badge variant={getShiftTypeColor(schedule.shift_type) as any} className="text-xs">
+                          <Badge variant={getShiftTypeColor(schedule.shift_type)} className="text-xs">
                             {getShiftTypeIcon(schedule.shift_type)}
                             <span className="ml-1">{schedule.shift_type}</span>
                           </Badge>

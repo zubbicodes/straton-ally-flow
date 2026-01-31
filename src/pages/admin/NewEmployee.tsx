@@ -168,11 +168,11 @@ export default function NewEmployee() {
       });
 
       navigate('/admin/employees');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating employee:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to create employee',
+        description: error instanceof Error ? error.message : 'Failed to create employee',
         variant: 'destructive',
       });
     } finally {

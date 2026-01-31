@@ -42,10 +42,16 @@ export default function EmployeeDashboard() {
           .maybeSingle();
 
         if (empData) {
+          const departmentName = (() => {
+            const raw = (empData as unknown as { departments?: { name: string } | { name: string }[] | null }).departments;
+            if (!raw) return null;
+            return Array.isArray(raw) ? raw[0]?.name ?? null : raw.name ?? null;
+          })();
+
           setEmployeeData({
             employee_id: empData.employee_id,
             designation: empData.designation,
-            department: (empData.departments as any)?.name || null,
+            department: departmentName,
             joining_date: empData.joining_date,
           });
 

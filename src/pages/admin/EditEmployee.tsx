@@ -92,8 +92,8 @@ export default function EditEmployee() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [departments, setDepartments] = useState([]);
-  const [offices, setOffices] = useState([]);
+  const [departments, setDepartments] = useState<Array<{ id: string; name: string }>>([]);
+  const [offices, setOffices] = useState<Array<{ id: string; name: string }>>([]);
   const [employee, setEmployee] = useState<Employee | null>(null);
 
   const form = useForm<EmployeeFormData>({
@@ -105,45 +105,60 @@ export default function EditEmployee() {
       if (!id) return;
 
       try {
-        // Fetch employee details
         const { data: employeeData, error: employeeError } = await supabase
           .from('employees')
-          .select(`
-            *,
-            departments (id, name),
-            profiles!inner (full_name, email, status, avatar_url),
-            access_control (
-              id,
-              access_level,
-              office_id,
-              offices (name)
-            ),
-            duty_schedules (
-              id,
-              schedule_name,
-              shift_type,
-              start_time,
-              end_time,
-              work_days
-            )
-          `)
+          .select('id, employee_id, user_id, designation, joining_date, phone, address, emergency_contact, department_id')
           .eq('id', id)
           .single();
 
         if (employeeError) throw employeeError;
 
         if (employeeData) {
-          setEmployee(employeeData);
-          form.reset({
-            full_name: employeeData.profiles.full_name,
-            email: employeeData.profiles.email,
-            phone: employeeData.phone || '',
-            designation: employeeData.designation || '',
-            department_id: employeeData.departments?.id || '',
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('full_name, email, status, avatar_url')
+            .eq('id', employeeData.user_id)
+            .single();
+
+          if (profileError) throw profileError;
+
+          const { data: departmentData, error: departmentError } = employeeData.department_id
+            ? await supabase.from('departments').select('id, name').eq('id', employeeData.department_id).single()
+            : { data: null, error: null };
+
+          if (departmentError) throw departmentError;
+
+          const normalizedEmployee: Employee = {
+            id: employeeData.id,
+            employee_id: employeeData.employee_id,
+            user_id: employeeData.user_id,
+            designation: employeeData.designation,
             joining_date: employeeData.joining_date,
-            address: employeeData.address || '',
-            emergency_contact: employeeData.emergency_contact || '',
-            status: employeeData.profiles.status,
+            phone: employeeData.phone,
+            address: employeeData.address,
+            emergency_contact: employeeData.emergency_contact,
+            profile: {
+              full_name: profileData.full_name,
+              email: profileData.email,
+              status: profileData.status,
+              avatar_url: profileData.avatar_url,
+            },
+            department: departmentData,
+            access_control: null,
+            duty_schedule: null,
+          };
+
+          setEmployee(normalizedEmployee);
+          form.reset({
+            full_name: normalizedEmployee.profile.full_name,
+            email: normalizedEmployee.profile.email,
+            phone: normalizedEmployee.phone || '',
+            designation: normalizedEmployee.designation || '',
+            department_id: normalizedEmployee.department?.id || '',
+            joining_date: normalizedEmployee.joining_date,
+            address: normalizedEmployee.address || '',
+            emergency_contact: normalizedEmployee.emergency_contact || '',
+            status: normalizedEmployee.profile.status as 'active' | 'inactive',
           });
         }
       } catch (error) {
@@ -345,7 +360,7 @@ export default function EditEmployee() {
                     <SelectValue placeholder="Select department" />
                   </SelectTrigger>
                   <SelectContent>
-                    {departments.map((dept: any) => (
+                    {departments.map((dept) => (
                       <SelectItem key={dept.id} value={dept.id}>
                         {dept.name}
                       </SelectItem>

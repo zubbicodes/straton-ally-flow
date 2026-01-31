@@ -171,10 +171,10 @@ export default function Salaries() {
       setIsDialogOpen(false);
       setSelectedEmployee(null);
       fetchSalaries();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to update salary',
+        description: error instanceof Error ? error.message : 'Failed to update salary',
         variant: 'destructive',
       });
     }

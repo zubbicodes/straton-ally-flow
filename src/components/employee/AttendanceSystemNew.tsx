@@ -14,6 +14,15 @@ interface AttendanceRecord {
   in_time: string | null;
   out_time: string | null;
   break_duration: string | null;
+  break_start_at: string | null;
+  break_total_minutes: number;
+  check_in_at: string | null;
+  check_out_at: string | null;
+  check_in_ip: string | null;
+  check_out_ip: string | null;
+  check_in_location: { lat: number; lng: number; accuracy?: number } | null;
+  check_out_location: { lat: number; lng: number; accuracy?: number } | null;
+  total_work_minutes: number | null;
   status: 'present' | 'absent' | 'half_day' | 'leave';
   notes: string | null;
   created_at: string;
@@ -22,18 +31,56 @@ interface AttendanceRecord {
 
 interface LocationInfo {
   isAllowed: boolean;
-  officeIPs: string[];
+  ipAllowed: boolean;
+  geoAllowed: boolean;
+  requireIpWhitelist: boolean;
+  requireGeoFencing: boolean;
+  officeName: string | null;
   currentIP: string | null;
   distance: number | null;
+  reason: string | null;
+}
+
+interface OfficeSettingsRow {
+  allowed_ip_ranges: string[] | null;
+  require_ip_whitelist: boolean;
+  geo_fencing_enabled: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  radius_meters: number | null;
+}
+
+interface OfficeWithSettingsRow {
+  id: string;
+  name: string;
+  is_active: boolean;
+  office_settings: OfficeSettingsRow[] | null;
 }
 
 export function AttendanceSystem() {
   const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
+  const [employeeId, setEmployeeId] = useState<string | null>(null);
+  const [officeId, setOfficeId] = useState<string | null>(null);
+  const [officeSettings, setOfficeSettings] = useState<{
+    officeName: string;
+    isActive: boolean;
+    allowedIpRanges: string[];
+    requireIpWhitelist: boolean;
+    geoFencingEnabled: boolean;
+    latitude: number | null;
+    longitude: number | null;
+    radiusMeters: number | null;
+  } | null>(null);
   const [locationInfo, setLocationInfo] = useState<LocationInfo>({
     isAllowed: false,
-    officeIPs: [],
+    ipAllowed: false,
+    geoAllowed: false,
+    requireIpWhitelist: false,
+    requireGeoFencing: false,
+    officeName: null,
     currentIP: null,
-    distance: null
+    distance: null,
+    reason: null,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -49,106 +96,321 @@ export function AttendanceSystem() {
 
   // Fetch today's attendance and check location
   useEffect(() => {
-    fetchTodayAttendance();
-    checkLocationPermission();
+    void (async () => {
+      await loadEmployeeOfficeContext();
+    })();
   }, []);
 
-  const fetchTodayAttendance = async () => {
+  const getErrorMessage = (error: unknown) => {
+    if (error && typeof error === 'object' && 'message' in error) {
+      return String((error as { message: unknown }).message);
+    }
+    return 'Unknown error';
+  };
+
+  const ipv4ToInt = (ip: string) => {
+    const parts = ip.split('.').map((p) => Number(p));
+    if (parts.length !== 4) return null;
+    if (parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)) return null;
+    return ((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
+  };
+
+  const isIpv4InCidr = (ip: string, cidr: string) => {
+    const trimmed = cidr.trim();
+    if (!trimmed) return false;
+
+    const [networkStr, prefixStr] = trimmed.includes('/') ? trimmed.split('/') : [trimmed, '32'];
+    const prefix = Number(prefixStr);
+    if (!Number.isFinite(prefix) || prefix < 0 || prefix > 32) return false;
+
+    const ipInt = ipv4ToInt(ip);
+    const networkInt = ipv4ToInt(networkStr);
+    if (ipInt === null || networkInt === null) return false;
+
+    const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+    return (ipInt & mask) === (networkInt & mask);
+  };
+
+  const isIpAllowed = (ip: string, allowedRanges: string[]) => {
+    return allowedRanges.some((range) => isIpv4InCidr(ip, range));
+  };
+
+  const haversineDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const R = 6371000;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const formatMinutes = (minutes: number | null | undefined) => {
+    if (minutes === null || minutes === undefined) return '—';
+    const safe = Math.max(0, Math.floor(minutes));
+    const h = Math.floor(safe / 60);
+    const m = safe % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  const getGeoPosition = async () => {
+    if (!navigator.geolocation) return null;
     try {
-      const today = format(new Date(), 'yyyy-MM-dd');
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+        });
+      });
+      return {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const loadEmployeeOfficeContext = async () => {
+    try {
       const { data: userData } = await supabase.auth.getUser();
-      
       if (!userData.user?.id) return;
 
-      // Get employee ID
-      const { data: employee } = await supabase
+      const { data: employee, error: employeeError } = await supabase
         .from('employees')
-        .select('id')
+        .select('id, office_id')
         .eq('user_id', userData.user.id)
         .single();
 
+      if (employeeError) throw employeeError;
       if (!employee) return;
+
+      setEmployeeId(employee.id);
+      setOfficeId(employee.office_id);
+
+      if (!employee.office_id) {
+        setOfficeSettings(null);
+        setLocationInfo({
+          isAllowed: false,
+          ipAllowed: false,
+          geoAllowed: false,
+          requireIpWhitelist: false,
+          requireGeoFencing: false,
+          officeName: null,
+          currentIP: null,
+          distance: null,
+          reason: 'No office assigned. Please contact admin.',
+        });
+        await fetchTodayAttendance(employee.id);
+        return;
+      }
+
+      const { data: officeData, error: officeError } = await supabase
+        .from('offices')
+        .select(
+          'id,name,is_active,office_settings(allowed_ip_ranges,require_ip_whitelist,geo_fencing_enabled,latitude,longitude,radius_meters)',
+        )
+        .eq('id', employee.office_id)
+        .maybeSingle();
+
+      if (officeError) throw officeError;
+      if (!officeData) {
+        setOfficeSettings(null);
+        setLocationInfo({
+          isAllowed: false,
+          ipAllowed: false,
+          geoAllowed: false,
+          requireIpWhitelist: false,
+          requireGeoFencing: false,
+          officeName: null,
+          currentIP: null,
+          distance: null,
+          reason: 'Office not found. Please contact admin.',
+        });
+        await fetchTodayAttendance(employee.id);
+        return;
+      }
+
+      const officeRow = officeData as unknown as OfficeWithSettingsRow;
+      const rawSettings = officeRow.office_settings?.[0] ?? null;
+
+      const normalized = {
+        officeName: officeRow.name,
+        isActive: Boolean(officeRow.is_active),
+        allowedIpRanges: (rawSettings?.allowed_ip_ranges ?? []) as string[],
+        requireIpWhitelist: Boolean(rawSettings?.require_ip_whitelist),
+        geoFencingEnabled: Boolean(rawSettings?.geo_fencing_enabled),
+        latitude: rawSettings?.latitude === null || rawSettings?.latitude === undefined ? null : Number(rawSettings.latitude),
+        longitude:
+          rawSettings?.longitude === null || rawSettings?.longitude === undefined ? null : Number(rawSettings.longitude),
+        radiusMeters:
+          rawSettings?.radius_meters === null || rawSettings?.radius_meters === undefined ? null : Number(rawSettings.radius_meters),
+      };
+
+      setOfficeSettings(normalized);
+      await fetchTodayAttendance(employee.id);
+      await refreshLocation(normalized);
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const fetchTodayAttendance = async (empId?: string) => {
+    try {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const effectiveEmployeeId = empId ?? employeeId;
+      if (!effectiveEmployeeId) return;
 
       // Get today's attendance
       const { data: attendanceData } = await supabase
         .from('attendance')
-        .select('*')
-        .eq('employee_id', employee.id)
+        .select(
+          'id,date,in_time,out_time,break_duration,break_start_at,break_total_minutes,status,notes,created_at,employee_id,check_in_at,check_out_at,check_in_ip,check_out_ip,check_in_location,check_out_location,total_work_minutes',
+        )
+        .eq('employee_id', effectiveEmployeeId)
         .eq('date', today)
         .maybeSingle();
 
       if (attendanceData) {
+        const checkInLocation =
+          (attendanceData.check_in_location as unknown as { lat: number; lng: number; accuracy?: number } | null) ??
+          null;
+        const checkOutLocation =
+          (attendanceData.check_out_location as unknown as { lat: number; lng: number; accuracy?: number } | null) ??
+          null;
+
         setAttendance({
           id: attendanceData.id,
           date: attendanceData.date,
           in_time: attendanceData.in_time,
           out_time: attendanceData.out_time,
-          break_duration: attendanceData.break_duration as string || null,
+          break_duration: attendanceData.break_duration,
+          break_start_at: attendanceData.break_start_at,
+          break_total_minutes: attendanceData.break_total_minutes ?? 0,
+          check_in_at: attendanceData.check_in_at,
+          check_out_at: attendanceData.check_out_at,
+          check_in_ip: attendanceData.check_in_ip,
+          check_out_ip: attendanceData.check_out_ip,
+          check_in_location: checkInLocation,
+          check_out_location: checkOutLocation,
+          total_work_minutes: attendanceData.total_work_minutes,
           status: attendanceData.status as 'present' | 'absent' | 'half_day' | 'leave',
           notes: attendanceData.notes,
           created_at: attendanceData.created_at,
-          employee_id: attendanceData.employee_id
+          employee_id: attendanceData.employee_id,
         });
+      } else {
+        setAttendance(null);
       }
     } catch (error) {
       console.error('Error fetching attendance:', error);
     }
   };
 
-  const checkLocationPermission = async () => {
+  const refreshLocation = async (settingsOverride?: typeof officeSettings) => {
+    const settings = settingsOverride ?? officeSettings;
+    if (!settings) return;
+
     try {
-      // Get user's IP address
+      if (!settings.isActive) {
+        const computed: LocationInfo = {
+          isAllowed: false,
+          ipAllowed: false,
+          geoAllowed: false,
+          requireIpWhitelist: settings.requireIpWhitelist,
+          requireGeoFencing: settings.geoFencingEnabled,
+          officeName: settings.officeName,
+          currentIP: null,
+          distance: null,
+          reason: 'Office is inactive. Attendance cannot be marked.',
+        };
+        setLocationInfo(computed);
+        return { info: computed, geo: null as { lat: number; lng: number; accuracy?: number } | null };
+      }
+
       const response = await fetch('https://api.ipify.org?format=json');
-      const { ip } = await response.json();
+      const data = (await response.json()) as { ip?: string };
+      const ip = data?.ip ?? null;
 
-      // Get allowed office IPs from settings (you'd store this in your database)
-      const officeIPs = [
-        '192.168.1.0/24',    // Office network range
-        '10.0.0.0/24',       // Another office network
-        '203.0.113.0/24'     // Corporate network
-      ];
+      const requireIp = settings.requireIpWhitelist;
+      const requireGeo = settings.geoFencingEnabled;
 
-      // Check if current IP is in allowed range
-      const isAllowed = isIPInAllowedRange(ip, officeIPs);
+      const ipAllowed = !requireIp || (!!ip && isIpAllowed(ip, settings.allowedIpRanges));
 
-      setLocationInfo({
+      let geoAllowed = !requireGeo;
+      let distance: number | null = null;
+      let geo: { lat: number; lng: number; accuracy?: number } | null = null;
+
+      if (requireGeo) {
+        const officeLat = settings.latitude;
+        const officeLng = settings.longitude;
+        const radius = settings.radiusMeters ?? 100;
+
+        geo = await getGeoPosition();
+
+        if (geo && officeLat !== null && officeLng !== null) {
+          distance = haversineDistanceMeters(geo.lat, geo.lng, officeLat, officeLng);
+          geoAllowed = distance <= radius;
+        } else {
+          geoAllowed = false;
+        }
+      }
+
+      const isAllowed = ipAllowed && geoAllowed;
+      const reason = isAllowed
+        ? null
+        : !ipAllowed && requireIp
+          ? 'Your network is not allowed for this office.'
+          : !geoAllowed && requireGeo
+            ? 'You are outside the allowed office location.'
+            : 'Attendance cannot be marked.';
+
+      const computed: LocationInfo = {
         isAllowed,
-        officeIPs,
+        ipAllowed,
+        geoAllowed,
+        requireIpWhitelist: requireIp,
+        requireGeoFencing: requireGeo,
+        officeName: settings.officeName,
         currentIP: ip,
-        distance: null // You could implement geolocation distance check here
-      });
+        distance,
+        reason,
+      };
+      setLocationInfo(computed);
+      return { info: computed, geo };
     } catch (error) {
       console.error('Error checking location:', error);
-      setLocationInfo(prev => ({
-        ...prev,
+      const computed: LocationInfo = {
         isAllowed: false,
-        currentIP: 'Unknown'
-      }));
+        ipAllowed: false,
+        geoAllowed: false,
+        requireIpWhitelist: settings.requireIpWhitelist,
+        requireGeoFencing: settings.geoFencingEnabled,
+        officeName: settings.officeName,
+        currentIP: null,
+        distance: null,
+        reason: 'Failed to verify location/network.',
+      };
+      setLocationInfo(computed);
+      return { info: computed, geo: null as { lat: number; lng: number; accuracy?: number } | null };
     }
   };
 
-  const isIPInAllowedRange = (userIP: string, allowedRanges: string[]): boolean => {
-    // Simple IP range checking (you might want to use a proper IP range library)
-    return allowedRanges.some(range => {
-      if (range.includes('/')) {
-        // CIDR notation - simplified check
-        const [network, prefix] = range.split('/');
-        const networkParts = network.split('.').map(Number);
-        const userParts = userIP.split('.').map(Number);
-        
-        // Simple check for demonstration - you'd want proper CIDR logic
-        return networkParts.slice(0, 2).every((part, i) => part === userParts[i]);
-      } else {
-        return userIP === range;
-      }
-    });
-  };
-
   const handleCheckIn = async () => {
-    if (!locationInfo.isAllowed) {
+    if (!employeeId) return;
+    if (!officeSettings) return;
+    const refreshed = await refreshLocation();
+    if (!refreshed?.info.isAllowed) {
       toast({
         title: "Location Restricted",
-        description: "You can only mark attendance from the office network.",
+        description: refreshed?.info.reason || "You can only mark attendance from the allowed network and location.",
         variant: "destructive"
       });
       return;
@@ -157,19 +419,8 @@ export function AttendanceSystem() {
     setIsLoading(true);
     try {
       const today = format(new Date(), 'yyyy-MM-dd');
-      const now = format(new Date(), 'HH:mm:ss');
-      const { data: userData } = await supabase.auth.getUser();
-      
-      if (!userData.user?.id) return;
-
-      // Get employee ID
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('user_id', userData.user.id)
-        .single();
-
-      if (!employee) return;
+      const nowTime = format(new Date(), 'HH:mm:ss');
+      const nowIso = new Date().toISOString();
 
       // Check if already checked in
       if (attendance?.in_time) {
@@ -181,47 +432,63 @@ export function AttendanceSystem() {
         return;
       }
 
-      // Determine status based on time
-      const hour = new Date().getHours();
-      const status = hour >= 9 ? 'present' : 'present'; // Simplified - always 'present' for now
-
       const { data, error } = await supabase
         .from('attendance')
-        .insert({
-          employee_id: employee.id,
+        .upsert({
+          employee_id: employeeId,
           date: today,
-          in_time: now,
-          status,
-          notes: null
-        })
+          in_time: nowTime,
+          check_in_at: nowIso,
+          check_in_ip: refreshed.info.currentIP,
+          check_in_location: refreshed.geo,
+          status: 'present',
+          break_start_at: null,
+          break_total_minutes: 0,
+          total_work_minutes: null,
+          notes: null,
+        }, { onConflict: 'employee_id,date' })
         .select()
         .single();
 
       if (error) throw error;
 
       if (data) {
+        const checkInLocation =
+          (data.check_in_location as unknown as { lat: number; lng: number; accuracy?: number } | null) ?? null;
+        const checkOutLocation =
+          (data.check_out_location as unknown as { lat: number; lng: number; accuracy?: number } | null) ?? null;
+
         setAttendance({
           id: data.id,
           date: data.date,
           in_time: data.in_time,
           out_time: data.out_time,
-          break_duration: data.break_duration as string || null,
+          break_duration: data.break_duration,
+          break_start_at: data.break_start_at,
+          break_total_minutes: data.break_total_minutes ?? 0,
+          check_in_at: data.check_in_at,
+          check_out_at: data.check_out_at,
+          check_in_ip: data.check_in_ip,
+          check_out_ip: data.check_out_ip,
+          check_in_location: checkInLocation,
+          check_out_location: checkOutLocation,
+          total_work_minutes: data.total_work_minutes,
           status: data.status as 'present' | 'absent' | 'half_day' | 'leave',
           notes: data.notes,
           created_at: data.created_at,
-          employee_id: data.employee_id
+          employee_id: data.employee_id,
         });
       }
 
       toast({
         title: "Checked In Successfully",
-        description: `You checked in at ${now}`,
+        description: `You checked in at ${nowTime}`,
       });
     } catch (error) {
       console.error('Error checking in:', error);
       toast({
         title: "Error",
-        description: "Failed to check in. Please try again.",
+        description: getErrorMessage(error) || "Failed to check in. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -230,10 +497,13 @@ export function AttendanceSystem() {
   };
 
   const handleCheckOut = async () => {
-    if (!locationInfo.isAllowed) {
+    if (!attendance?.id) return;
+    if (!officeSettings) return;
+    const refreshed = await refreshLocation();
+    if (!refreshed?.info.isAllowed) {
       toast({
         title: "Location Restricted",
-        description: "You can only mark attendance from the office network.",
+        description: refreshed?.info.reason || "You can only mark attendance from the allowed network and location.",
         variant: "destructive"
       });
       return;
@@ -241,39 +511,148 @@ export function AttendanceSystem() {
 
     setIsLoading(true);
     try {
-      const now = format(new Date(), 'HH:mm:ss');
-      
-      if (!attendance?.id) return;
+      const nowTime = format(new Date(), 'HH:mm:ss');
+      const nowIso = new Date().toISOString();
 
-      // Calculate total hours
-      const inTime = new Date(`2000-01-01T${attendance.in_time}`);
-      const outTime = new Date(`2000-01-01T${now}`);
-      const totalMs = outTime.getTime() - inTime.getTime();
-      const totalHours = Math.floor(totalMs / (1000 * 60 * 60));
-      const totalMinutes = Math.floor((totalMs % (1000 * 60 * 60)) / (1000 * 60));
-      const totalHoursStr = `${totalHours.toString().padStart(2, '0')}:${totalMinutes.toString().padStart(2, '0')}`;
+      const checkInAt = attendance.check_in_at
+        ? new Date(attendance.check_in_at)
+        : attendance.in_time
+          ? new Date(`${attendance.date}T${attendance.in_time}`)
+          : null;
+
+      if (!checkInAt) throw new Error('Missing check-in time');
+
+      const totalMinutesSinceCheckIn = Math.max(0, Math.floor((Date.now() - checkInAt.getTime()) / 60000));
+
+      let breakTotal = attendance.break_total_minutes ?? 0;
+      if (attendance.break_start_at) {
+        const breakStart = new Date(attendance.break_start_at);
+        const extraBreakMinutes = Math.max(0, Math.floor((Date.now() - breakStart.getTime()) / 60000));
+        breakTotal += extraBreakMinutes;
+      }
+
+      const workMinutes = Math.max(0, totalMinutesSinceCheckIn - breakTotal);
+      const totalHoursStr = formatMinutes(workMinutes);
+      const breakDurationStr = `${breakTotal} minutes`;
 
       const { error } = await supabase
         .from('attendance')
         .update({
-          out_time: now,
-          notes: `Total hours: ${totalHoursStr}`
+          out_time: nowTime,
+          check_out_at: nowIso,
+          check_out_ip: refreshed.info.currentIP,
+          check_out_location: refreshed.geo,
+          break_start_at: null,
+          break_total_minutes: breakTotal,
+          break_duration: breakDurationStr,
+          total_work_minutes: workMinutes,
+          notes: `Total hours: ${totalHoursStr}`,
         })
         .eq('id', attendance.id);
 
       if (error) throw error;
 
-      setAttendance(prev => prev ? { ...prev, out_time: now, notes: `Total hours: ${totalHoursStr}` } : null);
+      setAttendance((prev) =>
+        prev
+          ? {
+              ...prev,
+              out_time: nowTime,
+              check_out_at: nowIso,
+              check_out_ip: refreshed.info.currentIP,
+              check_out_location: refreshed.geo,
+              break_start_at: null,
+              break_total_minutes: breakTotal,
+              break_duration: breakDurationStr,
+              total_work_minutes: workMinutes,
+              notes: `Total hours: ${totalHoursStr}`,
+            }
+          : null,
+      );
       toast({
         title: "Checked Out Successfully",
-        description: `You checked out at ${now}. Total hours: ${totalHoursStr}`,
+        description: `You checked out at ${nowTime}. Total hours: ${totalHoursStr}`,
       });
     } catch (error) {
       console.error('Error checking out:', error);
       toast({
         title: "Error",
-        description: "Failed to check out. Please try again.",
+        description: getErrorMessage(error) || "Failed to check out. Please try again.",
         variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleBreakStart = async () => {
+    if (!attendance?.id || !attendance.in_time || attendance.out_time) return;
+    if (attendance.break_start_at) return;
+    if (!officeSettings) return;
+    const refreshed = await refreshLocation();
+    if (!refreshed?.info.isAllowed) {
+      toast({
+        title: "Location Restricted",
+        description: refreshed?.info.reason || "You can only manage breaks from the allowed network and location.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const { error } = await supabase.from('attendance').update({ break_start_at: nowIso }).eq('id', attendance.id);
+      if (error) throw error;
+
+      setAttendance((prev) => (prev ? { ...prev, break_start_at: nowIso } : prev));
+      toast({ title: "Break started" });
+    } catch (error: unknown) {
+      toast({
+        title: "Error",
+        description: getErrorMessage(error) || "Failed to start break.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleBreakEnd = async () => {
+    if (!attendance?.id || !attendance.break_start_at || attendance.out_time) return;
+    if (!officeSettings) return;
+    const refreshed = await refreshLocation();
+    if (!refreshed?.info.isAllowed) {
+      toast({
+        title: "Location Restricted",
+        description: refreshed?.info.reason || "You can only manage breaks from the allowed network and location.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const breakStart = new Date(attendance.break_start_at);
+      const additionalMinutes = Math.max(0, Math.floor((Date.now() - breakStart.getTime()) / 60000));
+      const newTotal = (attendance.break_total_minutes ?? 0) + additionalMinutes;
+      const breakDurationStr = `${newTotal} minutes`;
+
+      const { error } = await supabase
+        .from('attendance')
+        .update({ break_start_at: null, break_total_minutes: newTotal, break_duration: breakDurationStr })
+        .eq('id', attendance.id);
+
+      if (error) throw error;
+
+      setAttendance((prev) =>
+        prev ? { ...prev, break_start_at: null, break_total_minutes: newTotal, break_duration: breakDurationStr } : prev,
+      );
+      toast({ title: "Break ended" });
+    } catch (error: unknown) {
+      toast({
+        title: "Error",
+        description: getErrorMessage(error) || "Failed to end break.",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -301,15 +680,19 @@ export function AttendanceSystem() {
         <AlertDescription>
           <div className="flex items-center justify-between">
             <span>
-              {locationInfo.isAllowed ? 
-                "✓ You are within the office network" : 
-                "⚠ You are not in the office network. Attendance cannot be marked."
-              }
+              {locationInfo.isAllowed
+                ? `✓ Allowed${locationInfo.officeName ? ` (${locationInfo.officeName})` : ''}`
+                : `⚠ ${locationInfo.reason || 'Not allowed. Attendance cannot be marked.'}`}
             </span>
             <span className="text-sm text-muted-foreground">
               IP: {locationInfo.currentIP || 'Checking...'}
             </span>
           </div>
+          {locationInfo.requireGeoFencing && (
+            <div className="mt-1 text-sm text-muted-foreground">
+              Distance: {locationInfo.distance === null ? 'Checking...' : `${Math.round(locationInfo.distance)}m`}
+            </div>
+          )}
         </AlertDescription>
       </Alert>
 
@@ -356,13 +739,17 @@ export function AttendanceSystem() {
             <div>
               <p className="text-sm text-muted-foreground">Break Duration</p>
               <p className="font-medium">
-                {attendance?.break_duration || '—'}
+                {attendance ? formatMinutes(attendance.break_total_minutes) : '—'}
               </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Hours</p>
               <p className="font-medium">
-                {attendance?.notes?.includes('Total hours') ? attendance.notes.split('Total hours: ')[1] : '—'}
+                {attendance?.total_work_minutes !== null && attendance?.total_work_minutes !== undefined
+                  ? formatMinutes(attendance.total_work_minutes)
+                  : attendance?.notes?.includes('Total hours')
+                    ? attendance.notes.split('Total hours: ')[1]
+                    : '—'}
               </p>
             </div>
           </div>
@@ -379,16 +766,41 @@ export function AttendanceSystem() {
                 Check In
               </Button>
             ) : (
-              !attendance?.out_time && (
-                <Button 
-                  onClick={handleCheckOut}
-                  disabled={!locationInfo.isAllowed || isLoading}
-                  className="flex items-center gap-2"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Check Out
-                </Button>
-              )
+              <>
+                {!attendance?.out_time && (
+                  <Button 
+                    onClick={handleCheckOut}
+                    disabled={!locationInfo.isAllowed || isLoading}
+                    className="flex items-center gap-2"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Check Out
+                  </Button>
+                )}
+                {attendance?.in_time && !attendance?.out_time && (
+                  attendance.break_start_at ? (
+                    <Button
+                      variant="outline"
+                      onClick={handleBreakEnd}
+                      disabled={!locationInfo.isAllowed || isLoading}
+                      className="flex items-center gap-2"
+                    >
+                      <Coffee className="h-4 w-4" />
+                      End Break
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={handleBreakStart}
+                      disabled={!locationInfo.isAllowed || isLoading}
+                      className="flex items-center gap-2"
+                    >
+                      <Coffee className="h-4 w-4" />
+                      Start Break
+                    </Button>
+                  )
+                )}
+              </>
             )}
           </div>
         </CardContent>

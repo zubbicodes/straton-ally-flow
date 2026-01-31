@@ -184,10 +184,10 @@ export default function Attendance() {
       setIsDialogOpen(false);
       setNewAttendance({ employeeId: '', inTime: '', outTime: '', status: 'present' });
       fetchAttendance();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to add attendance',
+        description: error instanceof Error ? error.message : 'Failed to add attendance',
         variant: 'destructive',
       });
     }

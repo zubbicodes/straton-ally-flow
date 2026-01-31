@@ -1,243 +1,302 @@
-import { useState } from 'react';
-import { AttendanceSystem } from '@/components/employee/AttendanceSystemNew';
-import { AttendanceStats } from '@/components/employee/AttendanceStats';
-import { SalaryProgress } from '@/components/employee/SalaryProgress';
-import { TaskManagement } from '@/components/employee/TaskManagement';
-import { TeamCollaboration } from '@/components/employee/TeamCollaboration';
-import { Notifications } from '@/components/employee/Notifications';
-import { Chat } from '@/components/employee/Chat';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Clock, Calendar, DollarSign, CheckSquare, Users, Bell, MessageSquare, TrendingUp } from 'lucide-react';
+import { Calendar, CheckSquare, Clock, DollarSign, MessageSquare, Users, Bell } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function EmployeeDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [todayStatus, setTodayStatus] = useState('Not Marked');
+  const [nextAttendanceAction, setNextAttendanceAction] = useState('Next: Check In');
 
   const currentHour = new Date().getHours();
   const greeting =
     currentHour < 12 ? 'Good morning' : currentHour < 18 ? 'Good afternoon' : 'Good evening';
 
+  useEffect(() => {
+    const derive = (
+      record:
+        | {
+            in_time: string | null;
+            out_time: string | null;
+            break_start_at: string | null;
+            check_in_at: string | null;
+            check_out_at: string | null;
+            status: string | null;
+          }
+        | null
+        | undefined,
+    ) => {
+      const checkedIn = Boolean(record?.in_time || record?.check_in_at);
+      const checkedOut = Boolean(record?.out_time || record?.check_out_at);
+      const onBreak = Boolean(record?.break_start_at) && checkedIn && !checkedOut;
+
+      if (!checkedIn) {
+        if (record?.status === 'leave') return { label: 'Leave', next: 'No action today' };
+        if (record?.status === 'absent') return { label: 'Absent', next: 'No action today' };
+        if (record?.status === 'half_day') return { label: 'Half Day', next: 'No action today' };
+        return { label: 'Not Marked', next: 'Next: Check In' };
+      }
+
+      if (checkedOut) return { label: 'Checked Out', next: 'Done Today' };
+      if (onBreak) return { label: 'On Break', next: 'Next: End Break' };
+      return { label: 'Present', next: 'Next: Check Out' };
+    };
+
+    const fetchTodayStatus = async () => {
+      if (!user?.id) return;
+
+      const today = format(new Date(), 'yyyy-MM-dd');
+
+      const { data: employee, error: employeeError } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (employeeError || !employee?.id) {
+        setTodayStatus('Not Assigned');
+        setNextAttendanceAction('Contact HR');
+        return;
+      }
+
+      const { data: attendance } = await supabase
+        .from('attendance')
+        .select('in_time,out_time,break_start_at,check_in_at,check_out_at,status')
+        .eq('employee_id', employee.id)
+        .eq('date', today)
+        .maybeSingle();
+
+      const computed = derive(attendance);
+      setTodayStatus(computed.label);
+      setNextAttendanceAction(computed.next);
+    };
+
+    fetchTodayStatus();
+  }, [user?.id]);
+
+  const attendanceIndicatorClass =
+    todayStatus === 'Not Marked'
+      ? 'bg-red-500'
+      : todayStatus === 'On Break'
+        ? 'bg-orange-500'
+        : todayStatus === 'Checked Out'
+          ? 'bg-blue-500'
+          : 'bg-success';
+
+  const statusPillClass =
+    todayStatus === 'Not Marked'
+      ? 'bg-red-500/10 text-red-600'
+      : todayStatus === 'On Break'
+        ? 'bg-orange-500/10 text-orange-600'
+        : todayStatus === 'Checked Out'
+          ? 'bg-blue-500/10 text-blue-600'
+          : todayStatus === 'Leave'
+            ? 'bg-purple-500/10 text-purple-600'
+            : todayStatus === 'Absent'
+              ? 'bg-zinc-500/10 text-zinc-600'
+              : todayStatus === 'Half Day'
+                ? 'bg-yellow-500/10 text-yellow-600'
+                : 'bg-success/10 text-success';
+
+  const quickActions = [
+    {
+      title: 'Mark Attendance',
+      subtitle: nextAttendanceAction,
+      icon: Clock,
+      href: '/employee/attendance',
+      indicatorClass: attendanceIndicatorClass,
+    },
+    {
+      title: 'Tasks',
+      subtitle: '3 pending',
+      icon: CheckSquare,
+      href: '/employee/tasks',
+      indicatorClass: 'bg-success',
+    },
+    {
+      title: 'Team',
+      subtitle: '12 online',
+      icon: Users,
+      href: '/employee/team',
+      indicatorClass: 'bg-success',
+    },
+    {
+      title: 'Salary',
+      subtitle: 'January paid',
+      icon: DollarSign,
+      href: '/employee/salary',
+      indicatorClass: 'bg-success',
+    },
+    {
+      title: 'Notifications',
+      subtitle: '5 unread',
+      icon: Bell,
+      href: '/employee/notifications',
+      indicatorClass: 'bg-success',
+    },
+    {
+      title: 'Chat',
+      subtitle: '2 active',
+      icon: MessageSquare,
+      href: '/employee/chat',
+      indicatorClass: 'bg-blue-500',
+    },
+  ] as const;
+
   return (
-    <div className="space-y-6">
-      {/* Welcome Section */}
-      <div>
-        <h2 className="text-3xl font-bold text-foreground">
-          {greeting}, {user?.fullName?.split(' ')[0]}
-        </h2>
-        <p className="text-muted-foreground mt-1">
-          {format(new Date(), 'EEEE, MMMM d, yyyy')}
-        </p>
-      </div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2 space-y-4">
+          <Card className="card-elevated overflow-hidden">
+            <CardContent className="p-4 md:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="space-y-1">
+                  <h2 className="text-2xl md:text-3xl font-bold text-foreground">
+                    {greeting}, {user?.fullName?.split(' ')[0]}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
+                </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${statusPillClass}`}>
+                    <span className={`h-2 w-2 rounded-full ${attendanceIndicatorClass}`} />
+                    {todayStatus}
+                  </span>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">{nextAttendanceAction}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="card-elevated">
+            <CardContent className="p-3 md:p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-border bg-muted/30 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <p className="text-xs text-muted-foreground">Today</p>
+                      <p className="text-base font-semibold">{todayStatus}</p>
+                    </div>
+                    <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center">
+                      <Clock className="h-4 w-4 text-foreground" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-muted/30 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <p className="text-xs text-muted-foreground">This Month</p>
+                      <p className="text-base font-semibold">22 Days</p>
+                    </div>
+                    <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center">
+                      <Calendar className="h-4 w-4 text-foreground" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-muted/30 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <p className="text-xs text-muted-foreground">Salary</p>
+                      <p className="text-base font-semibold">$5,000</p>
+                    </div>
+                    <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center">
+                      <DollarSign className="h-4 w-4 text-foreground" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-muted/30 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <p className="text-xs text-muted-foreground">Tasks</p>
+                      <p className="text-base font-semibold">8</p>
+                    </div>
+                    <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center">
+                      <CheckSquare className="h-4 w-4 text-foreground" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="card-elevated">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                {quickActions.map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <button
+                      key={action.href}
+                      type="button"
+                      onClick={() => navigate(action.href)}
+                      className="group flex flex-col items-start gap-2 rounded-xl border border-border bg-muted/30 p-3 text-left transition-colors hover:bg-muted/60"
+                    >
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center">
+                          <Icon className="h-4 w-4 text-foreground" />
+                        </div>
+                        <span className={`h-2 w-2 rounded-full ${action.indicatorClass}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold leading-5 truncate">{action.title}</p>
+                        <p className="text-xs text-muted-foreground truncate">{action.subtitle}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card className="card-elevated">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <Clock className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Today's Status</p>
-                <p className="text-2xl font-bold">Not Marked</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-success/10 rounded-lg">
-                <Calendar className="h-6 w-6 text-success" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">This Month</p>
-                <p className="text-2xl font-bold">22 Days</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <DollarSign className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Monthly Salary</p>
-                <p className="text-2xl font-bold">$5,000</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <CheckSquare className="h-6 w-6 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Active Tasks</p>
-                <p className="text-2xl font-bold">8</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card className="card-elevated cursor-pointer hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Mark Attendance
-            </CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Activity</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
-              Check in/out and manage your daily attendance
-            </p>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Next: Check In</span>
-              <div className="w-2 h-2 bg-success rounded-full" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated cursor-pointer hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckSquare className="h-5 w-5" />
-              View Tasks
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
-              Manage your tasks and track progress
-            </p>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">3 pending tasks</span>
-              <TrendingUp className="h-4 w-4 text-success" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated cursor-pointer hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Team Collaboration
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
-              Connect with your team members
-            </p>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">12 members online</span>
-              <div className="w-2 h-2 bg-success rounded-full" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated cursor-pointer hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
-              Salary & Payslips
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
-              View salary history and download payslips
-            </p>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">January paid</span>
-              <div className="w-2 h-2 bg-success rounded-full" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated cursor-pointer hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              Notifications
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
-              Stay updated with latest announcements
-            </p>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">5 unread</span>
-              <div className="w-2 h-2 bg-success rounded-full" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="card-elevated cursor-pointer hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5" />
-              Team Chat
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground mb-4">
-              Chat with team members in real-time
-            </p>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">2 active chats</span>
-              <div className="w-2 h-2 bg-blue-500 rounded-full" />
+          <CardContent className="pt-0">
+            <div className="space-y-1">
+              <div className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-muted/40 transition-colors">
+                <div className="mt-1 h-2 w-2 bg-blue-500 rounded-full" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">Task assigned: "Design new landing page"</p>
+                  <p className="text-xs text-muted-foreground">2 hours ago</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-muted/40 transition-colors">
+                <div className="mt-1 h-2 w-2 bg-success rounded-full" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">Salary processed for January 2024</p>
+                  <p className="text-xs text-muted-foreground">1 day ago</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-muted/40 transition-colors">
+                <div className="mt-1 h-2 w-2 bg-purple-500 rounded-full" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">Team meeting scheduled for tomorrow</p>
+                  <p className="text-xs text-muted-foreground">2 days ago</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl p-2.5 hover:bg-muted/40 transition-colors">
+                <div className="mt-1 h-2 w-2 bg-orange-500 rounded-full" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">Leave request approved for Feb 5-7</p>
+                  <p className="text-xs text-muted-foreground">3 days ago</p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
-
-      {/* Recent Activity */}
-      <Card className="card-elevated">
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 pb-3 border-b">
-              <div className="w-2 h-2 bg-blue-500 rounded-full" />
-              <div className="flex-1">
-                <p className="font-medium">Task assigned: "Design new landing page"</p>
-                <p className="text-sm text-muted-foreground">2 hours ago</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 pb-3 border-b">
-              <div className="w-2 h-2 bg-success rounded-full" />
-              <div className="flex-1">
-                <p className="font-medium">Salary processed for January 2024</p>
-                <p className="text-sm text-muted-foreground">1 day ago</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 pb-3 border-b">
-              <div className="w-2 h-2 bg-purple-500 rounded-full" />
-              <div className="flex-1">
-                <p className="font-medium">Team meeting scheduled for tomorrow</p>
-                <p className="text-sm text-muted-foreground">2 days ago</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-orange-500 rounded-full" />
-              <div className="flex-1">
-                <p className="font-medium">Leave request approved for Feb 5-7</p>
-                <p className="text-sm text-muted-foreground">3 days ago</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

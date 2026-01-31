@@ -87,7 +87,7 @@ export default function Employees() {
         .in('id', departmentIds);
 
       // Transform the data to match the expected interface
-      const transformedEmployees = employeesData?.map((emp: any) => {
+      const transformedEmployees = employeesData?.map((emp) => {
         const profile = profilesData?.find(p => p.id === emp.user_id);
         const department = departmentsData?.find(d => d.id === emp.department_id);
 
