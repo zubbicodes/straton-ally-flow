@@ -2,15 +2,19 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, CheckSquare, Clock, DollarSign, MessageSquare, Users, Bell } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { format } from 'date-fns';
+import { endOfMonth, format, startOfMonth } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { mockTasks } from '@/data/mockTasks';
 
 export default function EmployeeDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [todayStatus, setTodayStatus] = useState('Not Marked');
   const [nextAttendanceAction, setNextAttendanceAction] = useState('Next: Check In');
+  const [monthPresentDays, setMonthPresentDays] = useState<number | null>(null);
+  const [salaryAmount, setSalaryAmount] = useState<number | null>(null);
+  const [salaryType, setSalaryType] = useState<string | null>(null);
 
   const currentHour = new Date().getHours();
   const greeting =
@@ -50,6 +54,8 @@ export default function EmployeeDashboard() {
       if (!user?.id) return;
 
       const today = format(new Date(), 'yyyy-MM-dd');
+      const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+      const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd');
 
       const { data: employee, error: employeeError } = await supabase
         .from('employees')
@@ -60,19 +66,49 @@ export default function EmployeeDashboard() {
       if (employeeError || !employee?.id) {
         setTodayStatus('Not Assigned');
         setNextAttendanceAction('Contact HR');
+        setMonthPresentDays(null);
+        setSalaryAmount(null);
+        setSalaryType(null);
         return;
       }
 
-      const { data: attendance } = await supabase
-        .from('attendance')
-        .select('in_time,out_time,break_start_at,check_in_at,check_out_at,status')
-        .eq('employee_id', employee.id)
-        .eq('date', today)
-        .maybeSingle();
+      const [todayAttendanceResult, monthAttendanceResult, salaryResult] = await Promise.all([
+        supabase
+          .from('attendance')
+          .select('in_time,out_time,break_start_at,check_in_at,check_out_at,status')
+          .eq('employee_id', employee.id)
+          .eq('date', today)
+          .maybeSingle(),
+        supabase
+          .from('attendance')
+          .select('status')
+          .eq('employee_id', employee.id)
+          .gte('date', monthStart)
+          .lte('date', monthEnd),
+        supabase
+          .from('salaries')
+          .select('amount,salary_type')
+          .eq('employee_id', employee.id)
+          .eq('is_current', true)
+          .order('effective_date', { ascending: false })
+          .maybeSingle(),
+      ]);
 
-      const computed = derive(attendance);
+      const computed = derive(todayAttendanceResult.data);
       setTodayStatus(computed.label);
       setNextAttendanceAction(computed.next);
+
+      const monthRows = monthAttendanceResult.data ?? [];
+      const presentDays = monthRows.filter((row) => row.status === 'present').length;
+      setMonthPresentDays(presentDays);
+
+      if (salaryResult.data) {
+        setSalaryAmount(salaryResult.data.amount ?? null);
+        setSalaryType(salaryResult.data.salary_type ?? null);
+      } else {
+        setSalaryAmount(null);
+        setSalaryType(null);
+      }
     };
 
     fetchTodayStatus();
@@ -102,6 +138,19 @@ export default function EmployeeDashboard() {
                 ? 'bg-yellow-500/10 text-yellow-600'
                 : 'bg-success/10 text-success';
 
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR' }).format(amount);
+
+  const salaryLabel =
+    salaryAmount === null
+      ? '—'
+      : salaryType === 'hourly'
+        ? `${formatCurrency(salaryAmount)}/hr`
+        : formatCurrency(salaryAmount);
+
+  const tasksTotal = mockTasks.length;
+  const tasksPending = mockTasks.filter((t) => t.status !== 'completed').length;
+
   const quickActions = [
     {
       title: 'Mark Attendance',
@@ -112,7 +161,7 @@ export default function EmployeeDashboard() {
     },
     {
       title: 'Tasks',
-      subtitle: '3 pending',
+      subtitle: `${tasksPending} pending`,
       icon: CheckSquare,
       href: '/employee/tasks',
       indicatorClass: 'bg-success',
@@ -191,7 +240,7 @@ export default function EmployeeDashboard() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
                       <p className="text-xs text-muted-foreground">This Month</p>
-                      <p className="text-base font-semibold">22 Days</p>
+                      <p className="text-base font-semibold">{monthPresentDays === null ? '—' : `${monthPresentDays} Days`}</p>
                     </div>
                     <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center">
                       <Calendar className="h-4 w-4 text-foreground" />
@@ -203,7 +252,7 @@ export default function EmployeeDashboard() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
                       <p className="text-xs text-muted-foreground">Salary</p>
-                      <p className="text-base font-semibold">$5,000</p>
+                      <p className="text-base font-semibold">{salaryLabel}</p>
                     </div>
                     <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center">
                       <DollarSign className="h-4 w-4 text-foreground" />
@@ -215,7 +264,7 @@ export default function EmployeeDashboard() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-0.5">
                       <p className="text-xs text-muted-foreground">Tasks</p>
-                      <p className="text-base font-semibold">8</p>
+                      <p className="text-base font-semibold">{tasksTotal}</p>
                     </div>
                     <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center">
                       <CheckSquare className="h-4 w-4 text-foreground" />
