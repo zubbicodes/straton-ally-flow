@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -84,6 +85,7 @@ export function AttendanceSystem() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [use12HourTime, setUse12HourTime] = useState(false);
   const { toast } = useToast();
 
   // Update current time every second
@@ -93,6 +95,16 @@ export function AttendanceSystem() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const raw = localStorage.getItem('attendance_time_format');
+    if (raw === '12h') setUse12HourTime(true);
+    if (raw === '24h') setUse12HourTime(false);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('attendance_time_format', use12HourTime ? '12h' : '24h');
+  }, [use12HourTime]);
 
   // Fetch today's attendance and check location
   useEffect(() => {
@@ -675,14 +687,25 @@ export function AttendanceSystem() {
   return (
     <div className="space-y-6">
       {/* Location Status */}
-      <Alert className={locationInfo.isAllowed ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
+      <Alert
+        className={
+          !locationInfo.currentIP || (locationInfo.requireGeoFencing && locationInfo.distance === null && !locationInfo.reason)
+            ? 'border-border bg-muted/30'
+            : locationInfo.isAllowed
+              ? 'border-success/30 bg-success/10'
+              : 'border-destructive/30 bg-destructive/10'
+        }
+      >
         <MapPin className="h-4 w-4" />
         <AlertDescription>
           <div className="flex items-center justify-between">
             <span>
-              {locationInfo.isAllowed
-                ? `✓ Allowed${locationInfo.officeName ? ` (${locationInfo.officeName})` : ''}`
-                : `⚠ ${locationInfo.reason || 'Not allowed. Attendance cannot be marked.'}`}
+              {!locationInfo.currentIP ||
+              (locationInfo.requireGeoFencing && locationInfo.distance === null && !locationInfo.reason)
+                ? `Checking location/network${locationInfo.officeName ? ` (${locationInfo.officeName})` : ''}...`
+                : locationInfo.isAllowed
+                  ? `✓ Allowed${locationInfo.officeName ? ` (${locationInfo.officeName})` : ''}`
+                  : `⚠ ${locationInfo.reason || 'Not allowed. Attendance cannot be marked.'}`}
             </span>
             <span className="text-sm text-muted-foreground">
               IP: {locationInfo.currentIP || 'Checking...'}
@@ -699,14 +722,21 @@ export function AttendanceSystem() {
       {/* Current Time */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Current Time
-          </CardTitle>
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Current Time
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">24h</span>
+              <Switch checked={use12HourTime} onCheckedChange={setUse12HourTime} />
+              <span className="text-xs text-muted-foreground">12h</span>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="text-3xl font-bold">
-            {format(currentTime, 'HH:mm:ss')}
+            {format(currentTime, use12HourTime ? 'hh:mm:ss a' : 'HH:mm:ss')}
           </div>
           <p className="text-muted-foreground">
             {format(currentTime, 'EEEE, MMMM d, yyyy')}
