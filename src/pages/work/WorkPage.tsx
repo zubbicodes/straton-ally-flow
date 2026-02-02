@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { WorkSidebar } from '@/components/work/WorkSidebar';
+import { useToast } from '@/hooks/use-toast';
 
 interface Channel {
   id: string;
@@ -24,6 +25,7 @@ export default function WorkPage() {
   const [officeName, setOfficeName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (channelId) {
@@ -75,6 +77,29 @@ export default function WorkPage() {
       case 'announcement': return <Megaphone className="w-5 h-5 text-muted-foreground" />;
       default: return <Hash className="w-5 h-5 text-muted-foreground" />;
     }
+  };
+
+  const requestDesktopPermission = async () => {
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+      toast({ title: 'Desktop notifications not supported' });
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      toast({ title: 'Desktop notifications already enabled' });
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      toast({ title: 'Desktop notifications enabled' });
+      return;
+    }
+    if (permission === 'denied') {
+      toast({ title: 'Desktop notifications blocked', description: 'Enable them in your browser settings.' });
+      return;
+    }
+    toast({ title: 'Desktop notifications not enabled' });
   };
 
   return (
@@ -149,7 +174,13 @@ export default function WorkPage() {
              <Button variant="ghost" size="icon" className="text-muted-foreground" title="Threads">
                <Hash className="w-4 h-4" />
              </Button>
-             <Button variant="ghost" size="icon" className="text-muted-foreground" title="Notification Settings">
+             <Button
+               variant="ghost"
+               size="icon"
+               className="text-muted-foreground"
+               title="Desktop notifications"
+               onClick={requestDesktopPermission}
+             >
                <Bell className="w-4 h-4" />
              </Button>
              <Button variant="ghost" size="icon" className="text-muted-foreground" title="Pinned Messages">

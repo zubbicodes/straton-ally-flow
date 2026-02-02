@@ -71,6 +71,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [navigate]);
 
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`work_notifications_popup:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'work_notifications', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const canNotify =
+            typeof window !== 'undefined' &&
+            typeof Notification !== 'undefined' &&
+            Notification.permission === 'granted';
+
+          if (!canNotify) return;
+
+          const isFocused =
+            typeof document !== 'undefined' &&
+            (document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus()));
+
+          if (isFocused) return;
+
+          const row = payload.new as unknown as {
+            id?: string;
+            title?: string;
+            body?: string | null;
+            office_id?: string | null;
+            channel_id?: string | null;
+          };
+
+          const url =
+            row.office_id && row.channel_id ? `/work/${row.office_id}/channel/${row.channel_id}` : '/work';
+
+          const notification = new Notification(row.title || 'Notification', {
+            body: row.body || undefined,
+            tag: row.id,
+            data: { url },
+          });
+
+          notification.onclick = () => {
+            notification.close();
+            window.focus();
+            window.location.href = url;
+          };
+
+          window.setTimeout(() => notification.close(), 8000);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [session?.user?.id]);
+
   const refetch = async () => {
     await fetchUser();
   };

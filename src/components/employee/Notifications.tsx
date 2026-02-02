@@ -49,8 +49,35 @@ export function Notifications() {
   const [filterType, setFilterType] = useState<'all' | WorkNotificationType>('all');
   const [filterRead, setFilterRead] = useState<'all' | 'read' | 'unread'>('all');
   const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
+  const [notificationPermission, setNotificationPermission] = useState<'unsupported' | 'default' | 'denied' | 'granted'>('unsupported');
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (typeof Notification === 'undefined') {
+      setNotificationPermission('unsupported');
+      return;
+    }
+    setNotificationPermission(Notification.permission);
+  }, []);
+
+  const requestDesktopPermission = async () => {
+    if (typeof window === 'undefined') return;
+    if (typeof Notification === 'undefined') {
+      toast({ title: 'Desktop notifications not supported' });
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+
+    if (permission === 'granted') {
+      toast({ title: 'Desktop notifications enabled' });
+    } else if (permission === 'denied') {
+      toast({ title: 'Desktop notifications blocked', description: 'Enable them in your browser settings.' });
+    }
+  };
 
   const getNotificationIcon = (type: WorkNotificationType) => {
     switch (type) {
@@ -310,6 +337,29 @@ export function Notifications() {
           )}
         </div>
       </div>
+
+      {notificationPermission === 'default' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Desktop notifications</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+            <div className="text-sm text-muted-foreground">
+              Enable desktop popups for new messages and mentions.
+            </div>
+            <Button onClick={requestDesktopPermission}>Enable</Button>
+          </CardContent>
+        </Card>
+      ) : notificationPermission === 'denied' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Desktop notifications blocked</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Enable notifications for this site in your browser settings.
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex items-center gap-2">
