@@ -71,6 +71,14 @@ interface NewChannelPayload {
   parent_id?: string;
 }
 
+interface NewChannelFormState {
+  name: string;
+  type: 'text' | 'voice' | 'announcement' | 'category';
+  parent_id: string;
+  description: string;
+  is_private: boolean;
+}
+
 export default function WorkManagement() {
   const [activeTab, setActiveTab] = useState('channels');
   const [offices, setOffices] = useState<Office[]>([]);
@@ -84,7 +92,7 @@ export default function WorkManagement() {
   const [newOfficeName, setNewOfficeName] = useState('');
   
   // New Channel Form State
-  const [newChannel, setNewChannel] = useState({
+  const [newChannel, setNewChannel] = useState<NewChannelFormState>({
     name: '',
     type: 'text',
     parent_id: 'none',
@@ -177,7 +185,13 @@ export default function WorkManagement() {
     try {
       const { data, error } = await supabase
         .from('offices')
-        .insert({ name: newOfficeName })
+        .insert({
+          name: newOfficeName,
+          address: 'N/A',
+          city: 'N/A',
+          country: 'N/A',
+          is_active: true,
+        })
         .select()
         .single();
 

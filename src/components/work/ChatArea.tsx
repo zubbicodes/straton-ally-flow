@@ -8,12 +8,15 @@ import { Paperclip, Send, Smile, MoreVertical, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { CreateTaskDialog } from './CreateTaskDialog';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 interface Message {
   id: string;
   content: string;
   user_id: string;
   created_at: string;
+  attachments?: unknown;
   user?: {
     full_name: string;
     avatar_url: string;
@@ -21,6 +24,42 @@ interface Message {
 }
 
 type RawMessage = Omit<Message, 'user'>;
+
+interface TaskAttachmentUser {
+  id: string;
+  full_name: string;
+  email?: string;
+  avatar_url: string | null;
+}
+
+interface TaskAttachmentPayload {
+  type: 'task';
+  task: {
+    id: string;
+    title: string;
+    description: string | null;
+    priority: string;
+    status: string;
+    due_date: string | null;
+  };
+  tagged_users?: TaskAttachmentUser[];
+}
+
+const isTaskAttachmentPayload = (value: unknown): value is TaskAttachmentPayload => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  if (v.type !== 'task') return false;
+  const task = v.task;
+  if (!task || typeof task !== 'object') return false;
+  const t = task as Record<string, unknown>;
+  return typeof t.id === 'string' && typeof t.title === 'string' && typeof t.priority === 'string' && typeof t.status === 'string';
+};
+
+const getTaskAttachment = (attachments: unknown): TaskAttachmentPayload | null => {
+  if (!Array.isArray(attachments)) return null;
+  const found = attachments.find(isTaskAttachmentPayload);
+  return found || null;
+};
 
 interface ChatAreaProps {
   channelId: string;
@@ -38,7 +77,7 @@ export function ChatArea({ channelId }: ChatAreaProps) {
       setLoading(true);
       const { data, error } = await supabase
         .from('work_messages')
-        .select('id,content,user_id,created_at')
+        .select('id,content,user_id,created_at,attachments')
         .eq('channel_id', channelId)
         .order('created_at', { ascending: true });
 
@@ -47,7 +86,15 @@ export function ChatArea({ channelId }: ChatAreaProps) {
         toast({ title: 'Error', description: 'Failed to load messages', variant: 'destructive' });
       } else {
         const rows = (data || []) as RawMessage[];
-        const userIds = Array.from(new Set(rows.map((m) => m.user_id)));
+        const userIds = Array.from(
+          new Set(
+            rows.flatMap((m) => {
+              const task = getTaskAttachment(m.attachments);
+              const tagged = task?.tagged_users?.map((u) => u.id) || [];
+              return [m.user_id, ...tagged];
+            }),
+          ),
+        );
         const { data: profiles } = await supabase
           .from('profiles')
           .select('id, full_name, avatar_url')
@@ -112,6 +159,51 @@ export function ChatArea({ channelId }: ChatAreaProps) {
     }
   };
 
+  const renderTaskCard = (taskPayload: TaskAttachmentPayload) => {
+    const task = taskPayload.task;
+    const taggedUsers = taskPayload.tagged_users || [];
+    return (
+      <Card className="border-muted bg-muted/20">
+        <CardHeader className="py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <CardTitle className="text-sm truncate">{task.title}</CardTitle>
+              {task.description && (
+                <div className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap break-words">
+                  {task.description}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge variant="secondary" className="text-[10px] h-5">{task.status}</Badge>
+              <Badge variant="outline" className="text-[10px] h-5">{task.priority}</Badge>
+            </div>
+          </div>
+          {task.due_date && (
+            <div className="text-xs text-muted-foreground mt-2">
+              Due {format(new Date(task.due_date), 'PP')}
+            </div>
+          )}
+        </CardHeader>
+        {taggedUsers.length > 0 && (
+          <CardContent className="pt-0 pb-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {taggedUsers.map((u) => (
+                <div key={u.id} className="flex items-center gap-2 bg-background/60 border rounded-full px-2 py-1">
+                  <Avatar className="h-5 w-5">
+                    <AvatarImage src={u.avatar_url || undefined} />
+                    <AvatarFallback>{u.full_name?.substring(0, 2).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <span className="text-xs">@{u.full_name}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+    );
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
@@ -167,9 +259,20 @@ export function ChatArea({ channelId }: ChatAreaProps) {
                         </span>
                       </div>
                     )}
-                    <div className="text-sm text-foreground/90 whitespace-pre-wrap break-words">
-                      {message.content}
-                    </div>
+                    {getTaskAttachment(message.attachments) ? (
+                      <div className="space-y-2">
+                        {renderTaskCard(getTaskAttachment(message.attachments)!)}
+                        {message.content ? (
+                          <div className="text-sm text-foreground/90 whitespace-pre-wrap break-words">
+                            {message.content}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-foreground/90 whitespace-pre-wrap break-words">
+                        {message.content}
+                      </div>
+                    )}
                   </div>
                 </div>
               );

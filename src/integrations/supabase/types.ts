@@ -414,6 +414,209 @@ export type Database = {
         }
         Relationships: []
       }
+      work_channel_members: {
+        Row: {
+          channel_id: string
+          created_at: string
+          last_read_at: string | null
+          role: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          last_read_at?: string | null
+          role?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          last_read_at?: string | null
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_channel_members_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "work_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_channels: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_private: boolean
+          name: string
+          office_id: string | null
+          parent_id: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_private?: boolean
+          name: string
+          office_id?: string | null
+          parent_id?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_private?: boolean
+          name?: string
+          office_id?: string | null
+          parent_id?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_channels_office_id_fkey"
+            columns: ["office_id"]
+            isOneToOne: false
+            referencedRelation: "offices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_channels_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "work_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_messages: {
+        Row: {
+          attachments: Json | null
+          channel_id: string
+          content: string | null
+          created_at: string
+          id: string
+          is_edited: boolean | null
+          parent_id: string | null
+          reactions: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attachments?: Json | null
+          channel_id: string
+          content?: string | null
+          created_at?: string
+          id?: string
+          is_edited?: boolean | null
+          parent_id?: string | null
+          reactions?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attachments?: Json | null
+          channel_id?: string
+          content?: string | null
+          created_at?: string
+          id?: string
+          is_edited?: boolean | null
+          parent_id?: string | null
+          reactions?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "work_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_messages_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "work_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_tasks: {
+        Row: {
+          assignee_id: string | null
+          channel_id: string | null
+          created_at: string
+          creator_id: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          priority: string
+          status: string
+          tags: string[] | null
+          time_spent: number | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assignee_id?: string | null
+          channel_id?: string | null
+          created_at?: string
+          creator_id?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          priority?: string
+          status?: string
+          tags?: string[] | null
+          time_spent?: number | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assignee_id?: string | null
+          channel_id?: string | null
+          created_at?: string
+          creator_id?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          priority?: string
+          status?: string
+          tags?: string[] | null
+          time_spent?: number | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_tasks_assignee_id_fkey"
+            columns: ["assignee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_tasks_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "work_channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
