@@ -24,7 +24,6 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { CheckSquare, Loader2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 
@@ -215,17 +214,10 @@ export function CreateTaskDialog({ channelId, trigger, onTaskCreated }: CreateTa
                 ) : (
                   <div className="divide-y">
                     {employeeOptions.map((opt) => (
-                      <div
+                      <button
                         key={opt.user_id}
+                        type="button"
                         onClick={() => toggleTaggedUser(opt.user_id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            toggleTaggedUser(opt.user_id);
-                          }
-                        }}
-                        role="button"
-                        tabIndex={0}
                         aria-pressed={taggedUserIds.includes(opt.user_id)}
                         className="w-full flex items-center justify-between gap-3 p-3 hover:bg-muted/50 text-left"
                       >
@@ -239,12 +231,14 @@ export function CreateTaskDialog({ channelId, trigger, onTaskCreated }: CreateTa
                             <span className="text-xs text-muted-foreground truncate">{opt.email}</span>
                           </div>
                         </div>
-                        <Checkbox
+                        <input
+                          type="checkbox"
                           checked={taggedUserIds.includes(opt.user_id)}
-                          onCheckedChange={() => toggleTaggedUser(opt.user_id)}
-                          onClick={(e) => e.stopPropagation()}
+                          readOnly
+                          tabIndex={-1}
+                          className="h-4 w-4 pointer-events-none"
                         />
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
