@@ -38,6 +38,7 @@ const moreNavItems = [
   { label: 'Salary', href: '/employee/salary' },
   { label: 'Notifications', href: '/employee/notifications' },
   { label: 'Chat', href: '/employee/chat' },
+  { label: 'Work (New)', href: '/work' },
   { label: 'Settings', href: '/employee/settings' },
 ];
 

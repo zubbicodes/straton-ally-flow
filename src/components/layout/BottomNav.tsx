@@ -35,6 +35,7 @@ const moreNavItems = [
   { label: 'Payroll', href: '/admin/salaries' },
   { label: 'Leave Management', href: '/admin/leave' },
   { label: 'Recruitment', href: '/admin/recruitment' },
+  { label: 'Work Management', href: '/admin/work' },
   { label: 'Settings', href: '/admin/settings' },
 ];
 

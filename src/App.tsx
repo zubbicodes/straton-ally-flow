@@ -25,6 +25,7 @@ import Leave from "./pages/admin/Leave";
 import Permissions from "./pages/admin/Permissions";
 import Settings from "./pages/admin/Settings";
 import Recruitment from "./pages/admin/Recruitment";
+import WorkManagement from "./pages/admin/WorkManagement";
 
 // Employee Pages
 import { EmployeeLayoutNew } from "./components/layout/EmployeeLayoutNew";
@@ -36,6 +37,10 @@ import SalaryPage from "./pages/employee/Salary";
 import NotificationsPage from "./pages/employee/Notifications";
 import ChatPage from "./pages/employee/Chat";
 import EmployeeSettings from "./pages/employee/Settings";
+
+// Work Module
+import { WorkLayout } from "./components/work/WorkLayout";
+import WorkPage from "./pages/work/WorkPage";
 
 const queryClient = new QueryClient();
 
@@ -74,6 +79,7 @@ const App = () => (
               <Route path="permissions" element={<Permissions />} />
               <Route path="settings" element={<Settings />} />
               <Route path="recruitment" element={<Recruitment />} />
+              <Route path="work" element={<WorkManagement />} />
             </Route>
 
             {/* Employee routes */}
@@ -94,6 +100,20 @@ const App = () => (
               <Route path="notifications" element={<NotificationsPage />} />
               <Route path="chat" element={<ChatPage />} />
               <Route path="settings" element={<EmployeeSettings />} />
+            </Route>
+
+            {/* Work Module routes */}
+            <Route
+              path="/work"
+              element={
+                <ProtectedRoute>
+                  <WorkLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<WorkPage />} />
+              <Route path=":officeId" element={<WorkPage />} />
+              <Route path=":officeId/channel/:channelId" element={<WorkPage />} />
             </Route>
 
             {/* Catch-all */}

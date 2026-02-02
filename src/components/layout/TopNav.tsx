@@ -20,6 +20,7 @@ const navItems = [
   { label: 'Recruitment', href: '/admin/recruitment' },
   { label: 'Attendance', href: '/admin/attendance' },
   { label: 'Payroll Management', href: '/admin/salaries' },
+  { label: 'Work Management', href: '/admin/work' },
 ];
 
 export function TopNav() {
