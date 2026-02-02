@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Search, Bell, MessageSquare, LogOut, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Search, Bell, MessageSquare, LogOut } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -14,6 +15,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { signOut } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 const navItems = [
   { label: 'Dashboard', href: '/employee/dashboard' },
@@ -29,11 +31,40 @@ export function EmployeeTopNav() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const firstName = user?.fullName?.split(' ')[0] || 'User';
+  const [unreadWorkNotifications, setUnreadWorkNotifications] = useState(0);
 
   const handleLogout = async () => {
     await signOut();
     navigate('/login', { replace: true });
   };
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const refreshUnreadCount = async () => {
+      const { count } = await supabase
+        .from('work_notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+      setUnreadWorkNotifications(count ?? 0);
+    };
+
+    refreshUnreadCount();
+
+    const realtime = supabase
+      .channel(`work_notifications_badge:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'work_notifications', filter: `user_id=eq.${user.id}` },
+        () => refreshUnreadCount()
+      )
+      .subscribe();
+
+    return () => {
+      realtime.unsubscribe();
+    };
+  }, [user?.id]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
@@ -87,9 +118,17 @@ export function EmployeeTopNav() {
             <MessageSquare className="h-4 w-4" />
           </Button>
 
-          <Button variant="ghost" size="icon" className="h-8 w-8 relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 relative"
+            onClick={() => navigate('/employee/notifications')}
+            title="Notifications"
+          >
             <Bell className="h-4 w-4" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-success rounded-full" />
+            {unreadWorkNotifications > 0 ? (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-success rounded-full" />
+            ) : null}
           </Button>
 
           <ThemeToggle />

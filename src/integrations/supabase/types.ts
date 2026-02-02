@@ -508,6 +508,7 @@ export type Database = {
           created_at: string
           id: string
           is_edited: boolean | null
+          mentions: string[]
           parent_id: string | null
           reactions: Json | null
           updated_at: string
@@ -520,6 +521,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_edited?: boolean | null
+          mentions?: string[]
           parent_id?: string | null
           reactions?: Json | null
           updated_at?: string
@@ -532,6 +534,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_edited?: boolean | null
+          mentions?: string[]
           parent_id?: string | null
           reactions?: Json | null
           updated_at?: string
@@ -550,6 +553,73 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "work_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_notifications: {
+        Row: {
+          actor_id: string | null
+          body: string | null
+          channel_id: string | null
+          created_at: string
+          id: string
+          is_read: boolean
+          message_id: string | null
+          office_id: string | null
+          read_at: string | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          body?: string | null
+          channel_id?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message_id?: string | null
+          office_id?: string | null
+          read_at?: string | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          body?: string | null
+          channel_id?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message_id?: string | null
+          office_id?: string | null
+          read_at?: string | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_notifications_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "work_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_notifications_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "work_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_notifications_office_id_fkey"
+            columns: ["office_id"]
+            isOneToOne: false
+            referencedRelation: "offices"
             referencedColumns: ["id"]
           },
         ]

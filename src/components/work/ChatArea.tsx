@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Paperclip, Send, Smile, MoreVertical, Plus } from 'lucide-react';
+import { Paperclip, Send, Smile, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { CreateTaskDialog } from './CreateTaskDialog';
@@ -395,10 +395,24 @@ export function ChatArea({ channelId }: ChatAreaProps) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const candidates = mentionCandidatesRef.current;
+    const mentionedUserIds = Array.from(
+      new Set(
+        candidates
+          .filter((c) => {
+            const pattern = new RegExp(`(^|\\s)@${escapeRegex(c.full_name)}(?=\\s|$|[.,!?:;])`, 'i');
+            return pattern.test(newMessage);
+          })
+          .map((c) => c.id)
+      )
+    );
+
     const { error } = await supabase.from('work_messages').insert({
       channel_id: channelId,
       user_id: user.id,
       content: newMessage.trim(),
+      mentions: mentionedUserIds,
     });
 
     if (error) {

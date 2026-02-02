@@ -1,214 +1,194 @@
-import { useState, useEffect } from 'react';
-import { Bell, Check, CheckCircle, XCircle, AlertTriangle, Info, Calendar, DollarSign, Users, MessageSquare, Square, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Check, AtSign, MessageSquare, Trash2, Loader2, ArrowUpRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
-interface Notification {
+type WorkNotificationType = 'mention' | 'message';
+
+interface WorkNotification {
   id: string;
+  user_id: string;
+  actor_id: string | null;
+  office_id: string | null;
+  channel_id: string | null;
+  message_id: string | null;
+  type: WorkNotificationType;
   title: string;
-  message: string;
-  type: 'info' | 'success' | 'warning' | 'error' | 'task' | 'salary' | 'attendance' | 'team';
+  body: string | null;
   is_read: boolean;
   created_at: string;
-  action_url?: string;
-  action_text?: string;
-  priority: 'low' | 'medium' | 'high';
 }
 
-const mockNotifications: Notification[] = [
-  {
-    id: '1',
-    title: 'Task Assigned',
-    message: 'You have been assigned a new task: "Design new landing page"',
-    type: 'task',
-    is_read: false,
-    created_at: '2024-01-28T10:30:00Z',
-    action_url: '/tasks',
-    action_text: 'View Task',
-    priority: 'high'
-  },
-  {
-    id: '2',
-    title: 'Salary Processed',
-    message: 'Your salary for January 2024 has been processed and will be credited by 5th February.',
-    type: 'salary',
-    is_read: false,
-    created_at: '2024-01-28T09:15:00Z',
-    action_url: '/salary',
-    action_text: 'View Payslip',
-    priority: 'medium'
-  },
-  {
-    id: '3',
-    title: 'Attendance Reminder',
-    message: 'Don\'t forget to mark your attendance for today. Check-in time is approaching.',
-    type: 'attendance',
-    is_read: true,
-    created_at: '2024-01-28T08:45:00Z',
-    action_url: '/attendance',
-    action_text: 'Mark Attendance',
-    priority: 'high'
-  },
-  {
-    id: '4',
-    title: 'Team Meeting',
-    message: 'Sprint planning meeting scheduled for tomorrow at 10:00 AM in Conference Room A.',
-    type: 'team',
-    is_read: true,
-    created_at: '2024-01-27T16:30:00Z',
-    action_url: '/calendar',
-    action_text: 'Add to Calendar',
-    priority: 'medium'
-  },
-  {
-    id: '5',
-    title: 'System Maintenance',
-    message: 'The HR system will be under maintenance this weekend from 2:00 AM to 6:00 AM.',
-    type: 'info',
-    is_read: true,
-    created_at: '2024-01-27T14:00:00Z',
-    priority: 'low'
-  },
-  {
-    id: '6',
-    title: 'Leave Request Approved',
-    message: 'Your leave request for February 5-7, 2024 has been approved.',
-    type: 'success',
-    is_read: false,
-    created_at: '2024-01-27T11:20:00Z',
-    action_url: '/leave',
-    action_text: 'View Details',
-    priority: 'medium'
-  },
-  {
-    id: '7',
-    title: 'Project Deadline',
-    message: 'Website Redesign project deadline is approaching. Only 3 days left.',
-    type: 'warning',
-    is_read: false,
-    created_at: '2024-01-27T10:00:00Z',
-    action_url: '/projects',
-    action_text: 'View Project',
-    priority: 'high'
-  },
-  {
-    id: '8',
-    title: 'New Team Member',
-    message: 'Welcome Sarah Wilson to the Engineering team as Backend Developer.',
-    type: 'team',
-    is_read: true,
-    created_at: '2024-01-26T15:30:00Z',
-    priority: 'low'
-  }
-];
+interface ProfileLite {
+  id: string;
+  full_name: string;
+  avatar_url: string | null;
+}
+
+interface ChannelLite {
+  id: string;
+  name: string;
+}
 
 export function Notifications() {
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
-  const [filterType, setFilterType] = useState<string>('all');
-  const [filterRead, setFilterRead] = useState<string>('all');
-  const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { toast } = useToast();
+  const [notifications, setNotifications] = useState<WorkNotification[]>([]);
+  const [profilesById, setProfilesById] = useState<Record<string, ProfileLite>>({});
+  const [channelsById, setChannelsById] = useState<Record<string, ChannelLite>>({});
+  const [loading, setLoading] = useState(true);
+  const [filterType, setFilterType] = useState<'all' | WorkNotificationType>('all');
+  const [filterRead, setFilterRead] = useState<'all' | 'read' | 'unread'>('all');
+  const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
-  const getNotificationIcon = (type: Notification['type']) => {
+  const getNotificationIcon = (type: WorkNotificationType) => {
     switch (type) {
-      case 'success':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
-      case 'warning':
-        return <AlertTriangle className="h-4 w-4 text-yellow-600" />;
-      case 'error':
-        return <XCircle className="h-4 w-4 text-red-600" />;
-      case 'task':
-        return <Square className="h-4 w-4 text-blue-600" />;
-      case 'salary':
-        return <DollarSign className="h-4 w-4 text-green-600" />;
-      case 'attendance':
-        return <Calendar className="h-4 w-4 text-purple-600" />;
-      case 'team':
-        return <Users className="h-4 w-4 text-orange-600" />;
-      default:
-        return <Info className="h-4 w-4 text-gray-600" />;
+      case 'mention':
+        return <AtSign className="h-4 w-4 text-blue-600" />;
+      case 'message':
+        return <MessageSquare className="h-4 w-4 text-green-600" />;
     }
   };
 
-  const getPriorityColor = (priority: Notification['priority']) => {
-    switch (priority) {
-      case 'high':
-        return 'border-l-red-500 bg-red-50';
-      case 'medium':
-        return 'border-l-yellow-500 bg-yellow-50';
-      case 'low':
-        return 'border-l-gray-500 bg-gray-50';
-      default:
-        return 'border-l-gray-500 bg-white';
-    }
-  };
+  const filteredNotifications = useMemo(() => {
+    return notifications.filter((notification) => {
+      const matchesType = filterType === 'all' || notification.type === filterType;
+      const matchesRead =
+        filterRead === 'all' ||
+        (filterRead === 'read' && notification.is_read) ||
+        (filterRead === 'unread' && !notification.is_read);
 
-  const getTypeColor = (type: Notification['type']) => {
-    switch (type) {
-      case 'success':
-        return 'bg-green-100 text-green-800';
-      case 'warning':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'error':
-        return 'bg-red-100 text-red-800';
-      case 'task':
-        return 'bg-blue-100 text-blue-800';
-      case 'salary':
-        return 'bg-green-100 text-green-800';
-      case 'attendance':
-        return 'bg-purple-100 text-purple-800';
-      case 'team':
-        return 'bg-orange-100 text-orange-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const filteredNotifications = notifications.filter(notification => {
-    const matchesType = filterType === 'all' || notification.type === filterType;
-    const matchesRead = filterRead === 'all' || 
-                       (filterRead === 'read' && notification.is_read) ||
-                       (filterRead === 'unread' && !notification.is_read);
-    
-    return matchesType && matchesRead;
-  });
-
-  const handleMarkAsRead = (notificationId: string) => {
-    setNotifications(notifications.map(n => 
-      n.id === notificationId ? { ...n, is_read: true } : n
-    ));
-  };
-
-  const handleMarkAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, is_read: true })));
-    toast({
-      title: "All Marked as Read",
-      description: "All notifications have been marked as read.",
+      return matchesType && matchesRead;
     });
+  }, [filterRead, filterType, notifications]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const hydrateRelated = async (rows: WorkNotification[]) => {
+      const actorIds = Array.from(new Set(rows.map((r) => r.actor_id).filter((v): v is string => typeof v === 'string')));
+      const channelIds = Array.from(new Set(rows.map((r) => r.channel_id).filter((v): v is string => typeof v === 'string')));
+
+      if (actorIds.length > 0) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id,full_name,avatar_url')
+          .in('id', actorIds);
+        if (data) {
+          setProfilesById((prev) => {
+            const next = { ...prev };
+            for (const p of data as ProfileLite[]) next[p.id] = p;
+            return next;
+          });
+        }
+      }
+
+      if (channelIds.length > 0) {
+        const { data } = await supabase
+          .from('work_channels')
+          .select('id,name')
+          .in('id', channelIds);
+        if (data) {
+          setChannelsById((prev) => {
+            const next = { ...prev };
+            for (const c of data as ChannelLite[]) next[c.id] = c;
+            return next;
+          });
+        }
+      }
+    };
+
+    const fetchNotifications = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('work_notifications')
+        .select('id,user_id,actor_id,office_id,channel_id,message_id,type,title,body,is_read,created_at')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (error) {
+        setNotifications([]);
+        setLoading(false);
+        return;
+      }
+
+      const rows = ((data || []) as unknown as WorkNotification[]).map((r) => ({
+        ...r,
+        type: (r.type === 'mention' ? 'mention' : 'message') as WorkNotificationType,
+      }));
+
+      setNotifications(rows);
+      await hydrateRelated(rows);
+      setLoading(false);
+    };
+
+    fetchNotifications();
+
+    const realtime = supabase
+      .channel(`work_notifications:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'work_notifications', filter: `user_id=eq.${user.id}` },
+        async (payload) => {
+          const row = payload.new as unknown as WorkNotification;
+          const normalized: WorkNotification = {
+            ...row,
+            type: (row.type === 'mention' ? 'mention' : 'message') as WorkNotificationType,
+          };
+          setNotifications((prev) => [normalized, ...prev]);
+          await hydrateRelated([normalized]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      realtime.unsubscribe();
+    };
+  }, [user?.id]);
+
+  const handleMarkAsRead = async (notificationId: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)));
+    await supabase
+      .from('work_notifications')
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .eq('id', notificationId);
   };
 
-  const handleDeleteNotification = (notificationId: string) => {
-    setNotifications(notifications.filter(n => n.id !== notificationId));
-    toast({
-      title: "Notification Deleted",
-      description: "The notification has been deleted.",
-    });
+  const handleMarkAllAsRead = async () => {
+    if (!user?.id) return;
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    await supabase
+      .from('work_notifications')
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('is_read', false);
+    toast({ title: 'All marked as read' });
   };
 
-  const handleBulkDelete = () => {
-    setNotifications(notifications.filter(n => !selectedNotifications.includes(n.id)));
+  const handleDeleteNotification = async (notificationId: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    setSelectedNotifications((prev) => prev.filter((id) => id !== notificationId));
+    await supabase.from('work_notifications').delete().eq('id', notificationId);
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = selectedNotifications;
+    if (ids.length === 0) return;
+    setNotifications((prev) => prev.filter((n) => !ids.includes(n.id)));
     setSelectedNotifications([]);
-    toast({
-      title: "Notifications Deleted",
-      description: `${selectedNotifications.length} notifications have been deleted.`,
-    });
+    await supabase.from('work_notifications').delete().in('id', ids);
+    toast({ title: 'Deleted notifications', description: `${ids.length} deleted.` });
   };
 
   const handleSelectAll = (checked: boolean) => {
@@ -227,8 +207,27 @@ export function Notifications() {
     }
   };
 
-  const NotificationCard = ({ notification }: { notification: Notification }) => (
-    <Card className={`border-l-4 ${getPriorityColor(notification.priority)} ${!notification.is_read ? 'shadow-sm' : ''}`}>
+  const openNotification = async (notification: WorkNotification) => {
+    if (!notification.is_read) await handleMarkAsRead(notification.id);
+    if (notification.office_id && notification.channel_id) {
+      navigate(`/work/${notification.office_id}/channel/${notification.channel_id}`);
+      return;
+    }
+    navigate('/work');
+  };
+
+  const NotificationCard = ({ notification }: { notification: WorkNotification }) => {
+    const actor = notification.actor_id ? profilesById[notification.actor_id] : undefined;
+    const channel = notification.channel_id ? channelsById[notification.channel_id] : undefined;
+    const byline = [
+      actor?.full_name ? `From ${actor.full_name}` : null,
+      channel?.name ? `in #${channel.name}` : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    return (
+    <Card className={`border ${!notification.is_read ? 'shadow-sm' : ''}`}>
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
           <Checkbox
@@ -245,14 +244,14 @@ export function Notifications() {
               {!notification.is_read && (
                 <div className="w-2 h-2 bg-blue-500 rounded-full" />
               )}
-              <Badge className={getTypeColor(notification.type)}>
-                {notification.type}
-              </Badge>
+              <Badge variant="secondary">{notification.type}</Badge>
             </div>
             
             <p className="text-sm text-muted-foreground mb-2">
-              {notification.message}
+              {notification.body || 'New activity'}
             </p>
+
+            {byline ? <div className="text-xs text-muted-foreground mb-2">{byline}</div> : null}
             
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">
@@ -260,29 +259,20 @@ export function Notifications() {
               </span>
               
               <div className="flex items-center gap-2">
-                {notification.action_url && (
-                  <Button variant="outline" size="sm">
-                    {notification.action_text}
-                  </Button>
-                )}
-                
-                {!notification.is_read && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => handleMarkAsRead(notification.id)}
-                  >
+                <Button variant="outline" size="sm" onClick={() => openNotification(notification)}>
+                  <ArrowUpRight className="h-3 w-3 mr-1" />
+                  Open
+                </Button>
+
+                {!notification.is_read ? (
+                  <Button variant="ghost" size="sm" onClick={() => handleMarkAsRead(notification.id)}>
                     <Check className="h-3 w-3 mr-1" />
                     Mark Read
                   </Button>
-                )}
+                ) : null}
                 
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => handleDeleteNotification(notification.id)}
-                >
-                  <X className="h-3 w-3" />
+                <Button variant="ghost" size="sm" onClick={() => handleDeleteNotification(notification.id)}>
+                  <Trash2 className="h-3 w-3" />
                 </Button>
               </div>
             </div>
@@ -291,10 +281,10 @@ export function Notifications() {
       </CardContent>
     </Card>
   );
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold">Notifications</h3>
@@ -321,7 +311,6 @@ export function Notifications() {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex items-center gap-2">
           <Checkbox
@@ -337,14 +326,8 @@ export function Notifications() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="task">Tasks</SelectItem>
-            <SelectItem value="salary">Salary</SelectItem>
-            <SelectItem value="attendance">Attendance</SelectItem>
-            <SelectItem value="team">Team</SelectItem>
-            <SelectItem value="info">Info</SelectItem>
-            <SelectItem value="success">Success</SelectItem>
-            <SelectItem value="warning">Warning</SelectItem>
-            <SelectItem value="error">Error</SelectItem>
+            <SelectItem value="mention">Mentions</SelectItem>
+            <SelectItem value="message">Messages</SelectItem>
           </SelectContent>
         </Select>
         
@@ -360,9 +343,15 @@ export function Notifications() {
         </Select>
       </div>
 
-      {/* Notifications List */}
       <div className="space-y-3">
-        {filteredNotifications.length > 0 ? (
+        {loading ? (
+          <Card>
+            <CardContent className="p-8 flex items-center justify-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading notifications
+            </CardContent>
+          </Card>
+        ) : filteredNotifications.length > 0 ? (
           filteredNotifications.map(notification => (
             <NotificationCard key={notification.id} notification={notification} />
           ))
@@ -381,48 +370,6 @@ export function Notifications() {
           </Card>
         )}
       </div>
-
-      {/* Notification Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Notification Preferences</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Email Notifications</p>
-                <p className="text-sm text-muted-foreground">Receive notifications via email</p>
-              </div>
-              <Checkbox defaultChecked />
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Task Notifications</p>
-                <p className="text-sm text-muted-foreground">Get notified about task assignments and updates</p>
-              </div>
-              <Checkbox defaultChecked />
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Salary Notifications</p>
-                <p className="text-sm text-muted-foreground">Receive salary and payslip notifications</p>
-              </div>
-              <Checkbox defaultChecked />
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Team Updates</p>
-                <p className="text-sm text-muted-foreground">Stay updated with team activities</p>
-              </div>
-              <Checkbox />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
