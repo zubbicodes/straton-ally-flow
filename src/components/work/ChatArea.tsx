@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,10 +74,17 @@ export function ChatArea({ channelId }: ChatAreaProps) {
   const { toast } = useToast();
   const [mentionCandidates, setMentionCandidates] = useState<TaskAttachmentUser[]>([]);
   const mentionCandidatesRef = useRef<TaskAttachmentUser[]>([]);
+  const currentUserIdRef = useRef<string | null>(null);
+  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionStartIndex, setMentionStartIndex] = useState<number | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const [typingUsers, setTypingUsers] = useState<Record<string, { user: TaskAttachmentUser; lastAt: number }>>({});
+  const typingIdleTimerRef = useRef<number | null>(null);
+  const lastTypingSentAtRef = useRef<number>(0);
+  const [softTypingPulse, setSoftTypingPulse] = useState(false);
+  const softTypingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const fetchChannelProfiles = async () => {
@@ -99,6 +106,11 @@ export function ChatArea({ channelId }: ChatAreaProps) {
       setMentionCandidates(candidates);
       mentionCandidatesRef.current = candidates;
       return candidates;
+    };
+
+    const fetchCurrentUserId = async () => {
+      const { data } = await supabase.auth.getUser();
+      currentUserIdRef.current = data.user?.id ?? null;
     };
 
     const fetchMessages = async () => {
@@ -130,41 +142,100 @@ export function ChatArea({ channelId }: ChatAreaProps) {
       setLoading(false);
     };
 
-    const subscribeToMessages = () => {
-      const channel = supabase
-        .channel(`room:${channelId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'work_messages',
-            filter: `channel_id=eq.${channelId}`,
-          },
-          async (payload) => {
-            const cached = mentionCandidatesRef.current.find((p) => p.id === payload.new.user_id);
-
-            const newMessage = {
-              ...payload.new,
-              user: cached || { full_name: 'Unknown User', avatar_url: '' }
-            } as Message;
-
-            setMessages((prev) => [...prev, newMessage]);
-          }
-        )
-        .subscribe();
-
+    const ensureRealtimeChannel = () => {
+      const channel = supabase.channel(`room:${channelId}`);
+      realtimeChannelRef.current = channel;
       return channel;
     };
 
+    fetchCurrentUserId();
     fetchChannelProfiles();
     fetchMessages();
-    const channel = subscribeToMessages();
+
+    const channel = ensureRealtimeChannel()
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'work_messages',
+          filter: `channel_id=eq.${channelId}`,
+        },
+        async (payload) => {
+          const cached = mentionCandidatesRef.current.find((p) => p.id === payload.new.user_id);
+
+          const newMessage = {
+            ...payload.new,
+            user: cached || { full_name: 'Unknown User', avatar_url: '' }
+          } as Message;
+
+          setMessages((prev) => [...prev, newMessage]);
+        }
+      )
+      .on('broadcast', { event: 'typing' }, (event) => {
+        const payload = (event as unknown as { payload?: unknown }).payload;
+        if (!payload || typeof payload !== 'object') return;
+        const p = payload as Record<string, unknown>;
+        const userId = typeof p.user_id === 'string' ? p.user_id : null;
+        if (!userId) return;
+        if (currentUserIdRef.current && userId === currentUserIdRef.current) return;
+        const isTyping = p.is_typing === true;
+
+        if (!isTyping) {
+          setTypingUsers((prev) => {
+            if (!prev[userId]) return prev;
+            const next = { ...prev };
+            delete next[userId];
+            return next;
+          });
+          return;
+        }
+
+        const fallback = mentionCandidatesRef.current.find((c) => c.id === userId);
+        const user: TaskAttachmentUser = {
+          id: userId,
+          full_name: (typeof p.full_name === 'string' ? p.full_name : fallback?.full_name) || 'Unknown User',
+          email: typeof p.email === 'string' ? p.email : fallback?.email,
+          avatar_url: (typeof p.avatar_url === 'string' ? p.avatar_url : fallback?.avatar_url) ?? null,
+        };
+
+        setTypingUsers((prev) => ({
+          ...prev,
+          [userId]: { user, lastAt: Date.now() },
+        }));
+      })
+      .subscribe();
 
     return () => {
       channel.unsubscribe();
+      realtimeChannelRef.current = null;
+      if (typingIdleTimerRef.current) window.clearTimeout(typingIdleTimerRef.current);
+      if (softTypingTimerRef.current) window.clearTimeout(softTypingTimerRef.current);
     };
   }, [channelId, toast]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      setTypingUsers((prev) => {
+        const ids = Object.keys(prev);
+        if (ids.length === 0) return prev;
+        let changed = false;
+        const next: Record<string, { user: TaskAttachmentUser; lastAt: number }> = {};
+        for (const id of ids) {
+          const entry = prev[id];
+          if (now - entry.lastAt <= 2500) {
+            next[id] = entry;
+          } else {
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 900);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
@@ -196,6 +267,57 @@ export function ChatArea({ channelId }: ChatAreaProps) {
     );
   });
 
+  const typingSummary = useMemo(() => {
+    const entries = Object.values(typingUsers)
+      .sort((a, b) => b.lastAt - a.lastAt)
+      .map((e) => e.user);
+    if (entries.length === 0) return null;
+    const names = entries.map((u) => u.full_name);
+    const text =
+      names.length === 1
+        ? `${names[0]} is typing`
+        : names.length === 2
+          ? `${names[0]} and ${names[1]} are typing`
+          : `${names[0]} and ${names.length - 1} others are typing`;
+    return { users: entries.slice(0, 3), text };
+  }, [typingUsers]);
+
+  const broadcastTyping = async (isTyping: boolean) => {
+    const channel = realtimeChannelRef.current;
+    const userId = currentUserIdRef.current;
+    if (!channel || !userId) return;
+    const profile = mentionCandidatesRef.current.find((c) => c.id === userId);
+    await channel.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: {
+        user_id: userId,
+        is_typing: isTyping,
+        full_name: profile?.full_name,
+        email: profile?.email,
+        avatar_url: profile?.avatar_url,
+        ts: Date.now(),
+      },
+    });
+  };
+
+  const markLocalTyping = () => {
+    const now = Date.now();
+    if (softTypingTimerRef.current) window.clearTimeout(softTypingTimerRef.current);
+    setSoftTypingPulse(true);
+    softTypingTimerRef.current = window.setTimeout(() => setSoftTypingPulse(false), 160);
+
+    if (now - lastTypingSentAtRef.current > 800) {
+      lastTypingSentAtRef.current = now;
+      broadcastTyping(true);
+    }
+
+    if (typingIdleTimerRef.current) window.clearTimeout(typingIdleTimerRef.current);
+    typingIdleTimerRef.current = window.setTimeout(() => {
+      broadcastTyping(false);
+    }, 1200);
+  };
+
   const applyMention = (candidate: TaskAttachmentUser) => {
     const input = inputRef.current;
     if (!input) return;
@@ -213,6 +335,7 @@ export function ChatArea({ channelId }: ChatAreaProps) {
     setMentionQuery('');
     setMentionStartIndex(null);
     setActiveMentionIndex(0);
+    markLocalTyping();
 
     window.requestAnimationFrame(() => {
       input.focus();
@@ -283,12 +406,14 @@ export function ChatArea({ channelId }: ChatAreaProps) {
       toast({ title: 'Error', description: 'Failed to send message', variant: 'destructive' });
     } else {
       setNewMessage('');
+      broadcastTyping(false);
+      if (typingIdleTimerRef.current) window.clearTimeout(typingIdleTimerRef.current);
     }
   };
 
   return (
     <div className="flex flex-col h-full">
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 p-2 sm:p-4">
         <div className="space-y-4">
           {loading ? (
             <div className="text-center text-muted-foreground">Loading messages...</div>
@@ -339,12 +464,35 @@ export function ChatArea({ channelId }: ChatAreaProps) {
               );
             })
           )}
+          {typingSummary ? (
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <div className="flex -space-x-2">
+                {typingSummary.users.map((u) => (
+                  <Avatar key={u.id} className="h-7 w-7 ring-2 ring-background">
+                    <AvatarImage src={u.avatar_url || undefined} />
+                    <AvatarFallback>{u.full_name?.substring(0, 2).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="truncate">{typingSummary.text}</span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-pulse" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-pulse" style={{ animationDelay: '180ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-pulse" style={{ animationDelay: '360ms' }} />
+                </span>
+              </div>
+            </div>
+          ) : null}
           <div ref={scrollRef} />
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t bg-background">
-        <form onSubmit={handleSendMessage} className="relative flex gap-2 bg-muted/30 p-2 rounded-lg border focus-within:ring-1 focus-within:ring-ring">
+      <div className="p-2 sm:p-4 border-t bg-background">
+        <form
+          onSubmit={handleSendMessage}
+          className={`relative flex gap-2 bg-muted/30 p-2 rounded-lg border focus-within:ring-1 focus-within:ring-ring transition-all duration-200 ease-out ${softTypingPulse ? 'scale-[1.01] bg-muted/40 shadow-sm' : ''}`}
+        >
           <div className="flex flex-col justify-end">
             <CreateTaskDialog 
               channelId={channelId} 
@@ -364,6 +512,7 @@ export function ChatArea({ channelId }: ChatAreaProps) {
             onChange={(e) => {
               const next = e.target.value;
               setNewMessage(next);
+              markLocalTyping();
               const cursor = e.target.selectionStart ?? next.length;
               const state = getMentionState(next, cursor);
               if (!state) {
@@ -402,6 +551,10 @@ export function ChatArea({ channelId }: ChatAreaProps) {
                 applyMention(filteredMentionCandidates[activeMentionIndex]);
               }
             }}
+            onBlur={() => {
+              broadcastTyping(false);
+              if (typingIdleTimerRef.current) window.clearTimeout(typingIdleTimerRef.current);
+            }}
             placeholder={`Message #${channelId}`} // We should pass channel name ideally
             className="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-2 py-1 h-auto min-h-[40px]"
           />
@@ -415,7 +568,7 @@ export function ChatArea({ channelId }: ChatAreaProps) {
           </div>
 
           {mentionOpen && (
-            <div className="absolute left-[140px] right-2 bottom-[54px] z-50 border rounded-md bg-background shadow-md overflow-hidden">
+            <div className="absolute left-2 right-2 bottom-full mb-2 z-50 border rounded-md bg-background shadow-md overflow-hidden">
               <ScrollArea className="max-h-[220px]">
                 {filteredMentionCandidates.length === 0 ? (
                   <div className="p-3 text-sm text-muted-foreground">No matches</div>

@@ -40,6 +40,15 @@ BEGIN
   END IF;
 
   IF _is_private THEN
+    IF NOT public.has_role(auth.uid(), 'admin') AND NOT EXISTS (
+      SELECT 1
+      FROM public.work_channel_members m
+      WHERE m.channel_id = _channel_id
+        AND m.user_id = auth.uid()
+    ) THEN
+      RETURN;
+    END IF;
+
     RETURN QUERY
       SELECT p.id, p.full_name, p.email, p.avatar_url
       FROM public.work_channel_members m
