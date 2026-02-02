@@ -70,9 +70,37 @@ export function ChatArea({ channelId }: ChatAreaProps) {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [mentionCandidates, setMentionCandidates] = useState<TaskAttachmentUser[]>([]);
+  const mentionCandidatesRef = useRef<TaskAttachmentUser[]>([]);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionStartIndex, setMentionStartIndex] = useState<number | null>(null);
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
 
   useEffect(() => {
+    const fetchChannelProfiles = async () => {
+      const { data, error } = await supabase.rpc('get_channel_profiles', { _channel_id: channelId });
+      if (error) {
+        console.error('Error fetching channel profiles:', error);
+        setMentionCandidates([]);
+        mentionCandidatesRef.current = [];
+        return [];
+      }
+
+      const candidates: TaskAttachmentUser[] = (data || []).map((p) => ({
+        id: p.id,
+        full_name: p.full_name,
+        email: p.email,
+        avatar_url: p.avatar_url ?? null,
+      }));
+
+      setMentionCandidates(candidates);
+      mentionCandidatesRef.current = candidates;
+      return candidates;
+    };
+
     const fetchMessages = async () => {
       setLoading(true);
       const { data, error } = await supabase
@@ -86,23 +114,15 @@ export function ChatArea({ channelId }: ChatAreaProps) {
         toast({ title: 'Error', description: 'Failed to load messages', variant: 'destructive' });
       } else {
         const rows = (data || []) as RawMessage[];
-        const userIds = Array.from(
-          new Set(
-            rows.flatMap((m) => {
-              const task = getTaskAttachment(m.attachments);
-              const tagged = task?.tagged_users?.map((u) => u.id) || [];
-              return [m.user_id, ...tagged];
-            }),
-          ),
-        );
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .in('id', userIds);
-        
+        const candidates = mentionCandidatesRef.current.length > 0 ? mentionCandidatesRef.current : await fetchChannelProfiles();
+        const profileById = candidates.reduce((acc, p) => {
+          acc[p.id] = p;
+          return acc;
+        }, {} as Record<string, TaskAttachmentUser>);
+
         const messagesWithProfiles = rows.map((m) => ({
           ...m,
-          user: profiles?.find((p) => p.id === m.user_id) || { full_name: 'Unknown User', avatar_url: '' }
+          user: profileById[m.user_id] || { full_name: 'Unknown User', avatar_url: '' }
         }));
         
         setMessages(messagesWithProfiles);
@@ -122,15 +142,11 @@ export function ChatArea({ channelId }: ChatAreaProps) {
             filter: `channel_id=eq.${channelId}`,
           },
           async (payload) => {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('id, full_name, avatar_url')
-              .eq('id', payload.new.user_id)
-              .single();
+            const cached = mentionCandidatesRef.current.find((p) => p.id === payload.new.user_id);
 
             const newMessage = {
               ...payload.new,
-              user: profile || { full_name: 'Unknown User', avatar_url: '' }
+              user: cached || { full_name: 'Unknown User', avatar_url: '' }
             } as Message;
 
             setMessages((prev) => [...prev, newMessage]);
@@ -141,6 +157,7 @@ export function ChatArea({ channelId }: ChatAreaProps) {
       return channel;
     };
 
+    fetchChannelProfiles();
     fetchMessages();
     const channel = subscribeToMessages();
 
@@ -157,6 +174,50 @@ export function ChatArea({ channelId }: ChatAreaProps) {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: 'smooth' });
     }
+  };
+
+  const getMentionState = (text: string, cursorIndex: number) => {
+    const beforeCursor = text.slice(0, cursorIndex);
+    const atIndex = beforeCursor.lastIndexOf('@');
+    if (atIndex === -1) return null;
+    const prevChar = atIndex > 0 ? beforeCursor[atIndex - 1] : '';
+    if (prevChar && !/\s/.test(prevChar)) return null;
+    const token = beforeCursor.slice(atIndex + 1);
+    if (/\s/.test(token)) return null;
+    return { atIndex, query: token };
+  };
+
+  const filteredMentionCandidates = mentionCandidates.filter((c) => {
+    const q = mentionQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.full_name.toLowerCase().includes(q) ||
+      (c.email ? c.email.toLowerCase().includes(q) : false)
+    );
+  });
+
+  const applyMention = (candidate: TaskAttachmentUser) => {
+    const input = inputRef.current;
+    if (!input) return;
+    if (mentionStartIndex === null) return;
+
+    const cursor = input.selectionStart ?? newMessage.length;
+    const before = newMessage.slice(0, mentionStartIndex);
+    const after = newMessage.slice(cursor);
+    const insert = `@${candidate.full_name} `;
+    const next = `${before}${insert}${after}`;
+    const nextCursor = (before + insert).length;
+
+    setNewMessage(next);
+    setMentionOpen(false);
+    setMentionQuery('');
+    setMentionStartIndex(null);
+    setActiveMentionIndex(0);
+
+    window.requestAnimationFrame(() => {
+      input.focus();
+      input.setSelectionRange(nextCursor, nextCursor);
+    });
   };
 
   const renderTaskCard = (taskPayload: TaskAttachmentPayload) => {
@@ -283,7 +344,7 @@ export function ChatArea({ channelId }: ChatAreaProps) {
       </ScrollArea>
 
       <div className="p-4 border-t bg-background">
-        <form onSubmit={handleSendMessage} className="flex gap-2 bg-muted/30 p-2 rounded-lg border focus-within:ring-1 focus-within:ring-ring">
+        <form onSubmit={handleSendMessage} className="relative flex gap-2 bg-muted/30 p-2 rounded-lg border focus-within:ring-1 focus-within:ring-ring">
           <div className="flex flex-col justify-end">
             <CreateTaskDialog 
               channelId={channelId} 
@@ -298,8 +359,49 @@ export function ChatArea({ channelId }: ChatAreaProps) {
             <Paperclip className="w-5 h-5" />
           </Button>
           <Input
+            ref={inputRef}
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setNewMessage(next);
+              const cursor = e.target.selectionStart ?? next.length;
+              const state = getMentionState(next, cursor);
+              if (!state) {
+                setMentionOpen(false);
+                setMentionQuery('');
+                setMentionStartIndex(null);
+                setActiveMentionIndex(0);
+                return;
+              }
+              setMentionOpen(true);
+              setMentionQuery(state.query);
+              setMentionStartIndex(state.atIndex);
+              setActiveMentionIndex(0);
+            }}
+            onKeyDown={(e) => {
+              if (!mentionOpen) return;
+              if (filteredMentionCandidates.length === 0) return;
+
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setMentionOpen(false);
+                return;
+              }
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setActiveMentionIndex((prev) => Math.min(prev + 1, filteredMentionCandidates.length - 1));
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActiveMentionIndex((prev) => Math.max(prev - 1, 0));
+                return;
+              }
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                applyMention(filteredMentionCandidates[activeMentionIndex]);
+              }
+            }}
             placeholder={`Message #${channelId}`} // We should pass channel name ideally
             className="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-2 py-1 h-auto min-h-[40px]"
           />
@@ -311,6 +413,40 @@ export function ChatArea({ channelId }: ChatAreaProps) {
               <Send className="w-4 h-4" />
             </Button>
           </div>
+
+          {mentionOpen && (
+            <div className="absolute left-[140px] right-2 bottom-[54px] z-50 border rounded-md bg-background shadow-md overflow-hidden">
+              <ScrollArea className="max-h-[220px]">
+                {filteredMentionCandidates.length === 0 ? (
+                  <div className="p-3 text-sm text-muted-foreground">No matches</div>
+                ) : (
+                  <div className="divide-y">
+                    {filteredMentionCandidates.slice(0, 12).map((c, idx) => (
+                      <div
+                        key={c.id}
+                        role="button"
+                        tabIndex={0}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          applyMention(c);
+                        }}
+                        className={`flex items-center gap-3 p-3 cursor-pointer ${idx === activeMentionIndex ? 'bg-muted' : 'hover:bg-muted/50'}`}
+                      >
+                        <Avatar className="h-7 w-7">
+                          <AvatarImage src={c.avatar_url || undefined} />
+                          <AvatarFallback>{c.full_name?.substring(0, 2).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-medium truncate">{c.full_name}</span>
+                          {c.email ? <span className="text-xs text-muted-foreground truncate">{c.email}</span> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+          )}
         </form>
       </div>
     </div>

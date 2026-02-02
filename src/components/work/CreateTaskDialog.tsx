@@ -43,7 +43,6 @@ interface TaskFormValues {
 }
 
 interface OfficeEmployeeOption {
-  employee_id: string;
   user_id: string;
   full_name: string;
   email: string;
@@ -67,65 +66,20 @@ export function CreateTaskDialog({ channelId, trigger, onTaskCreated }: CreateTa
     if (!open) return;
 
     const fetchOptions = async () => {
-      const { data: channelRow, error: channelError } = await supabase
-        .from('work_channels')
-        .select('office_id')
-        .eq('id', channelId)
-        .single();
-
-      if (channelError) {
-        console.error('Error fetching channel office:', channelError);
+      const { data, error } = await supabase.rpc('get_channel_profiles', { _channel_id: channelId });
+      if (error) {
+        console.error('Error fetching channel profiles:', error);
         setEmployeeOptions([]);
         return;
       }
-
-      const officeId = channelRow?.office_id;
-      if (!officeId) {
-        setEmployeeOptions([]);
-        return;
-      }
-
-      const { data: employeesData, error: employeesError } = await supabase
-        .from('employees')
-        .select('id,user_id')
-        .eq('office_id', officeId);
-
-      if (employeesError) {
-        console.error('Error fetching office employees:', employeesError);
-        setEmployeeOptions([]);
-        return;
-      }
-
-      const userIds = (employeesData || []).map((e) => e.user_id).filter(Boolean);
-      if (userIds.length === 0) {
-        setEmployeeOptions([]);
-        return;
-      }
-
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id,full_name,email,avatar_url')
-        .in('id', userIds)
-        .order('full_name', { ascending: true });
-
-      if (profilesError) {
-        console.error('Error fetching profiles for task tagging:', profilesError);
-        setEmployeeOptions([]);
-        return;
-      }
-
-      const merged: OfficeEmployeeOption[] = (employeesData || []).map((e) => {
-        const p = (profilesData || []).find((x) => x.id === e.user_id);
-        return {
-          employee_id: e.id,
-          user_id: e.user_id,
-          full_name: p?.full_name || 'Unknown User',
-          email: p?.email || '',
-          avatar_url: p?.avatar_url ?? null,
-        };
-      });
-
-      setEmployeeOptions(merged);
+      setEmployeeOptions(
+        (data || []).map((p) => ({
+          user_id: p.id,
+          full_name: p.full_name,
+          email: p.email,
+          avatar_url: p.avatar_url ?? null,
+        })),
+      );
     };
 
     fetchOptions();
@@ -261,10 +215,18 @@ export function CreateTaskDialog({ channelId, trigger, onTaskCreated }: CreateTa
                 ) : (
                   <div className="divide-y">
                     {employeeOptions.map((opt) => (
-                      <button
+                      <div
                         key={opt.user_id}
-                        type="button"
                         onClick={() => toggleTaggedUser(opt.user_id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleTaggedUser(opt.user_id);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={taggedUserIds.includes(opt.user_id)}
                         className="w-full flex items-center justify-between gap-3 p-3 hover:bg-muted/50 text-left"
                       >
                         <div className="flex items-center gap-3 min-w-0">
@@ -277,8 +239,12 @@ export function CreateTaskDialog({ channelId, trigger, onTaskCreated }: CreateTa
                             <span className="text-xs text-muted-foreground truncate">{opt.email}</span>
                           </div>
                         </div>
-                        <Checkbox checked={taggedUserIds.includes(opt.user_id)} />
-                      </button>
+                        <Checkbox
+                          checked={taggedUserIds.includes(opt.user_id)}
+                          onCheckedChange={() => toggleTaggedUser(opt.user_id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
                     ))}
                   </div>
                 )}

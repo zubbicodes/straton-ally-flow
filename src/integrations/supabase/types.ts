@@ -622,6 +622,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_channel_profiles: {
+        Args: { _channel_id: string }
+        Returns: {
+          id: string
+          full_name: string
+          email: string
+          avatar_url: string | null
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
