@@ -28,12 +28,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { formatCurrencyPKR, formatTime12h } from '@/lib/utils';
 
 const optionalUuid = z.preprocess(
   (value) => (value === '' ? undefined : value),
@@ -56,6 +58,8 @@ const employeeSchema = z.object({
   address: z.string().optional(),
   emergency_contact: z.string().optional(),
   status: z.enum(['active', 'inactive']),
+  is_team_lead: z.boolean().optional(),
+  work_location: z.enum(['remote', 'on_site']).nullable().optional(),
   salary_type: z.enum(['monthly', 'hourly']).optional(),
   salary_amount: optionalNumberString,
   salary_effective_date: z.preprocess(
@@ -86,6 +90,8 @@ interface Employee {
   phone: string | null;
   address: string | null;
   emergency_contact: string | null;
+  is_team_lead: boolean;
+  work_location: 'remote' | 'on_site' | null;
   profile: {
     full_name: string;
     email: string;
@@ -135,7 +141,7 @@ export default function EditEmployee() {
 
       try {
         const baseSelect =
-          'id, employee_id, user_id, designation, joining_date, phone, address, emergency_contact, department_id';
+          'id, employee_id, user_id, designation, joining_date, phone, address, emergency_contact, department_id, is_team_lead, work_location';
         const selectWithGender = `${baseSelect}, gender`;
         const selectWithoutGender = baseSelect;
 
@@ -163,7 +169,11 @@ export default function EditEmployee() {
         if (employeeResult.error) throw employeeResult.error;
 
         if (employeeResult.data) {
-          const employeeData = employeeResult.data as typeof employeeResult.data & { gender?: string | null };
+          const employeeData = employeeResult.data as typeof employeeResult.data & {
+            gender?: string | null;
+            is_team_lead?: boolean;
+            work_location?: 'remote' | 'on_site' | null;
+          };
 
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
@@ -223,6 +233,8 @@ export default function EditEmployee() {
             phone: employeeData.phone,
             address: employeeData.address,
             emergency_contact: employeeData.emergency_contact,
+            is_team_lead: Boolean(employeeData.is_team_lead),
+            work_location: employeeData.work_location === 'remote' || employeeData.work_location === 'on_site' ? employeeData.work_location : null,
             profile: {
               full_name: profileData.full_name,
               email: profileData.email,
@@ -247,6 +259,8 @@ export default function EditEmployee() {
             address: normalizedEmployee.address || '',
             emergency_contact: normalizedEmployee.emergency_contact || '',
             status: normalizedEmployee.profile.status as 'active' | 'inactive',
+            is_team_lead: normalizedEmployee.is_team_lead,
+            work_location: normalizedEmployee.work_location || 'on_site',
             salary_type: normalizedSalary?.salary_type,
             salary_amount: normalizedSalary ? String(normalizedSalary.amount) : '',
             salary_effective_date: normalizedSalary?.effective_date || normalizedEmployee.joining_date,
@@ -314,17 +328,20 @@ export default function EditEmployee() {
       if (profileError) throw profileError;
 
       // Update employee record
+      const employeeUpdatePayload = {
+        gender: data.gender,
+        joining_date: data.joining_date,
+        designation: data.designation,
+        department_id: data.department_id || null,
+        phone: data.phone,
+        address: data.address,
+        emergency_contact: data.emergency_contact,
+        is_team_lead: data.is_team_lead ?? false,
+        work_location: data.work_location ?? 'on_site',
+      };
       const employeeUpdateResult = await supabase
         .from('employees')
-        .update({
-          gender: data.gender,
-          joining_date: data.joining_date,
-          designation: data.designation,
-          department_id: data.department_id || null,
-          phone: data.phone,
-          address: data.address,
-          emergency_contact: data.emergency_contact,
-        })
+        .update(employeeUpdatePayload)
         .eq('id', id);
 
       if (employeeUpdateResult.error) {
@@ -347,6 +364,8 @@ export default function EditEmployee() {
             phone: data.phone,
             address: data.address,
             emergency_contact: data.emergency_contact,
+            is_team_lead: data.is_team_lead ?? false,
+            work_location: data.work_location ?? 'on_site',
           })
           .eq('id', id);
 
@@ -405,7 +424,7 @@ export default function EditEmployee() {
         description: 'Employee information updated successfully',
       });
 
-      navigate('/admin/employees');
+      navigate('/admin/recruitment?tab=employees');
     } catch (error) {
       console.error('Error updating employee:', error);
       toast({
@@ -439,7 +458,7 @@ export default function EditEmployee() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate('/admin/employees')}>
+          <Button variant="ghost" onClick={() => navigate('/admin/recruitment?tab=employees')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Employees
           </Button>
@@ -576,6 +595,48 @@ export default function EditEmployee() {
                   <p className="text-sm text-destructive">{form.formState.errors.joining_date.message}</p>
                 )}
               </div>
+              <div className="space-y-2 md:col-span-2 flex items-center space-x-2">
+                <Checkbox
+                  id="isTeamLead"
+                  checked={form.watch('is_team_lead')}
+                  onCheckedChange={(checked) => form.setValue('is_team_lead', !!checked)}
+                />
+                <label htmlFor="isTeamLead" className="text-sm font-medium leading-none">
+                  Team lead (Only Select if the employee is a team lead)
+                </label>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Work arrangement</Label>
+                {form.watch('work_location') === 'remote' && (
+                  <p className="text-xs text-destructive mb-2">Note: Selecting Remote will remove any location/IP restriction for the employee.</p>
+                )}
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="workLocationRemote"
+                      checked={form.watch('work_location') === 'remote'}
+                      onCheckedChange={(checked) => {
+                        form.setValue('work_location', checked ? 'remote' : 'on_site');
+                      }}
+                    />
+                    <label htmlFor="workLocationRemote" className="text-sm font-medium leading-none">
+                      Remote
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="workLocationOnSite"
+                      checked={form.watch('work_location') === 'on_site'}
+                      onCheckedChange={(checked) => {
+                        form.setValue('work_location', checked ? 'on_site' : 'on_site');
+                      }}
+                    />
+                    <label htmlFor="workLocationOnSite" className="text-sm font-medium leading-none">
+                      On-site
+                    </label>
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Address</Label>
@@ -652,7 +713,7 @@ export default function EditEmployee() {
             </div>
             {currentSalary ? (
               <div className="text-sm text-muted-foreground">
-                Current: {currentSalary.amount} ({currentSalary.salary_type}) effective {format(new Date(currentSalary.effective_date), 'MMM d, yyyy')}
+                Current: {formatCurrencyPKR(currentSalary.amount)} ({currentSalary.salary_type}) effective {format(new Date(currentSalary.effective_date), 'MMM d, yyyy')}
               </div>
             ) : (
               <div className="text-sm text-muted-foreground">No salary record found</div>
@@ -700,7 +761,7 @@ export default function EditEmployee() {
                   <div>
                     <p className="font-medium">{employee.duty_schedule.schedule_name}</p>
                     <p className="text-sm text-muted-foreground">
-                      {employee.duty_schedule.start_time} - {employee.duty_schedule.end_time} ({employee.duty_schedule.shift_type})
+                      {formatTime12h(employee.duty_schedule.start_time)} – {formatTime12h(employee.duty_schedule.end_time)} ({employee.duty_schedule.shift_type})
                     </p>
                   </div>
                   <Badge variant="outline">Active</Badge>
@@ -714,7 +775,7 @@ export default function EditEmployee() {
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => navigate('/admin/employees')}>
+          <Button type="button" variant="outline" onClick={() => navigate('/admin/recruitment?tab=employees')}>
             Cancel
           </Button>
           <Button type="submit" disabled={isSaving}>

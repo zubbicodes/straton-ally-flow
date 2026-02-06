@@ -23,14 +23,14 @@ import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 const mainNavItems = [
   { icon: LayoutDashboard, label: 'Home', href: '/admin/dashboard' },
-  { icon: Users, label: 'Team', href: '/admin/employees' },
+  { icon: Users, label: 'Team', href: '/admin/recruitment?tab=employees' },
   { icon: Clock, label: 'Attendance', href: '/admin/attendance' },
   { icon: Wallet, label: 'Payroll', href: '/admin/salaries' },
 ];
 
 const moreNavItems = [
   { label: 'Dashboard', href: '/admin/dashboard' },
-  { label: 'Employees', href: '/admin/employees' },
+  { label: 'Employees', href: '/admin/recruitment?tab=employees' },
   { label: 'Attendance', href: '/admin/attendance' },
   { label: 'Payroll', href: '/admin/salaries' },
   { label: 'Leave Management', href: '/admin/leave' },

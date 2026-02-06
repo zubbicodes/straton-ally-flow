@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CalendarCheck, DollarSign, Clock, Smile } from 'lucide-react';
+import { CalendarCheck, Banknote, Clock, Smile } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -124,7 +124,7 @@ export default function AdminDashboard() {
             title="Payroll Processed"
             value="1,240"
             subtitle="Salary Transactions"
-            icon={DollarSign}
+            icon={Banknote}
             trend={{ value: 1.8, isPositive: true }}
           />
           <MetricCard
@@ -147,7 +147,7 @@ export default function AdminDashboard() {
 
         {/* Payroll Grid */}
         <PayrollGrid
-          takeHomePay="$2,350.00"
+          takeHomePay="Rs. 235,000"
           paymentPercentage={100}
         />
 

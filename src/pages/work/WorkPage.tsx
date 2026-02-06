@@ -219,7 +219,7 @@ export default function WorkPage() {
             </p>
           </div>
         ) : (
-          <ChatArea channelId={channelId} />
+          <ChatArea channelId={channelId} channelName={channel?.name} />
         )}
       </main>
     </div>

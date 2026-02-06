@@ -12,6 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Search, Filter, Download } from 'lucide-react';
+import { formatCurrencyPKR } from '@/lib/utils';
 
 interface PayrollEmployee {
   id: string;
@@ -88,13 +89,13 @@ export function PayrollTable({ employees }: PayrollTableProps) {
                       <p className="text-[10px] md:text-xs text-muted-foreground truncate">{emp.department}</p>
                     </TableCell>
                     <TableCell className="py-2 md:py-2.5 text-right text-xs md:text-sm whitespace-nowrap">
-                      ${emp.salary.toLocaleString()}
+                      {formatCurrencyPKR(emp.salary)}
                     </TableCell>
                     <TableCell className="py-2 md:py-2.5 text-right text-xs md:text-sm hidden md:table-cell">
-                      ${emp.deduction.toLocaleString()}
+                      {formatCurrencyPKR(emp.deduction)}
                     </TableCell>
                     <TableCell className="py-2 md:py-2.5 text-right text-xs md:text-sm font-medium whitespace-nowrap">
-                      ${emp.total.toLocaleString()}
+                      {formatCurrencyPKR(emp.total)}
                     </TableCell>
                     <TableCell className="py-2 md:py-2.5 text-right">
                       <Button

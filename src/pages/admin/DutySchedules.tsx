@@ -34,6 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
+import { formatTime12h } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -317,7 +318,7 @@ export default function DutySchedules() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-1 text-sm">
                           <Clock className="h-3 w-3" />
-                          {schedule.start_time} - {schedule.end_time}
+                          {formatTime12h(schedule.start_time)} – {formatTime12h(schedule.end_time)}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           Break: {schedule.break_duration}

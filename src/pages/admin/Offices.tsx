@@ -29,6 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { formatTime12h } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -247,7 +248,7 @@ export default function Offices() {
                         <div className="space-y-1">
                           <div className="flex items-center gap-1 text-sm">
                             <Clock className="h-3 w-3" />
-                            {office.settings.work_start_time} - {office.settings.work_end_time}
+                            {formatTime12h(office.settings.work_start_time)} – {formatTime12h(office.settings.work_end_time)}
                           </div>
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Globe className="h-3 w-3" />

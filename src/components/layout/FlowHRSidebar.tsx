@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/admin/dashboard' },
-  { icon: Users, label: 'Employees', href: '/admin/employees' },
+  { icon: Users, label: 'Employees', href: '/admin/recruitment?tab=employees' },
   { icon: Clock, label: 'Attendance', href: '/admin/attendance' },
   { icon: TrendingUp, label: 'Performance', href: '/admin/performance' },
   { icon: Wallet, label: 'Payroll', href: '/admin/salaries' },

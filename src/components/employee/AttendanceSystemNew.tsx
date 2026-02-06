@@ -1,12 +1,23 @@
 import { useState, useEffect } from 'react';
-import { Clock, MapPin, Coffee, LogIn, LogOut } from 'lucide-react';
+import { Clock, MapPin, Coffee, LogIn, LogOut, LogOutIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { formatTime12h } from '@/lib/utils';
 import { format } from 'date-fns';
 
 interface AttendanceRecord {
@@ -85,7 +96,18 @@ export function AttendanceSystem() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [use12HourTime, setUse12HourTime] = useState(false);
+  const [use12HourTime, setUse12HourTime] = useState(true);
+  const [scheduledEndTime, setScheduledEndTime] = useState<string | null>(null);
+  const [earlyCheckoutRequest, setEarlyCheckoutRequest] = useState<{
+    id: string;
+    status: 'pending' | 'approved' | 'declined';
+    requested_checkout_time: string;
+    reason: string;
+  } | null>(null);
+  const [earlyRequestModalOpen, setEarlyRequestModalOpen] = useState(false);
+  const [earlyRequestReason, setEarlyRequestReason] = useState('');
+  const [earlyRequestTime, setEarlyRequestTime] = useState('');
+  const [earlyRequestSubmitting, setEarlyRequestSubmitting] = useState(false);
   const { toast } = useToast();
 
   // Update current time every second
@@ -191,14 +213,33 @@ export function AttendanceSystem() {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user?.id) return;
 
-      const { data: employee, error: employeeError } = await supabase
+      const { data: employeeRow, error: employeeError } = await supabase
         .from('employees')
-        .select('id, office_id')
+        .select('id, office_id, duty_schedule_template_id, custom_work_end_time')
         .eq('user_id', userData.user.id)
         .single();
 
       if (employeeError) throw employeeError;
-      if (!employee) return;
+      if (!employeeRow) return;
+
+      const employee = employeeRow as typeof employeeRow & {
+        duty_schedule_template_id?: string | null;
+        custom_work_end_time?: string | null;
+        duty_schedule_templates?: { end_time: string } | null;
+      };
+
+      let endTime: string | null = null;
+      if (employee.custom_work_end_time) {
+        endTime = String(employee.custom_work_end_time).slice(0, 8);
+      } else if (employee.duty_schedule_template_id) {
+        const { data: template } = await supabase
+          .from('duty_schedule_templates')
+          .select('end_time')
+          .eq('id', employee.duty_schedule_template_id)
+          .single();
+        if (template?.end_time) endTime = String(template.end_time).slice(0, 8);
+      }
+      setScheduledEndTime(endTime);
 
       setEmployeeId(employee.id);
       setOfficeId(employee.office_id);
@@ -321,6 +362,24 @@ export function AttendanceSystem() {
       } else {
         setAttendance(null);
       }
+
+      // Fetch today's early checkout request for this employee
+      const { data: earlyRequest } = await supabase
+        .from('early_checkout_requests')
+        .select('id, status, requested_checkout_time, reason')
+        .eq('employee_id', effectiveEmployeeId)
+        .eq('date', today)
+        .maybeSingle();
+      setEarlyCheckoutRequest(
+        earlyRequest
+          ? {
+              id: earlyRequest.id,
+              status: earlyRequest.status as 'pending' | 'approved' | 'declined',
+              requested_checkout_time: String(earlyRequest.requested_checkout_time).slice(0, 8),
+              reason: earlyRequest.reason ?? '',
+            }
+          : null,
+      );
     } catch (error) {
       console.error('Error fetching attendance:', error);
     }
@@ -508,6 +567,11 @@ export function AttendanceSystem() {
     }
   };
 
+  const getEarliestCheckoutTime = (): string | null => {
+    if (earlyCheckoutRequest?.status === 'approved') return earlyCheckoutRequest.requested_checkout_time;
+    return scheduledEndTime;
+  };
+
   const handleCheckOut = async () => {
     if (!attendance?.id) return;
     if (!officeSettings) return;
@@ -519,6 +583,22 @@ export function AttendanceSystem() {
         variant: "destructive"
       });
       return;
+    }
+
+    const earliest = getEarliestCheckoutTime();
+    if (earliest) {
+      const now = new Date();
+      const [eh, em] = earliest.split(':').map(Number);
+      const cutoff = new Date(now);
+      cutoff.setHours(eh, em ?? 0, 0, 0);
+      if (now < cutoff) {
+        toast({
+          title: "Cannot check out yet",
+          description: `You must complete your duty hours. Earliest checkout time is ${formatTime12h(earliest)}.${earlyCheckoutRequest?.status === 'approved' ? ' (You have an approved early leave request for this time.)' : ''}`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -626,6 +706,46 @@ export function AttendanceSystem() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSubmitEarlyCheckoutRequest = async () => {
+    if (!employeeId || !earlyRequestReason.trim() || !earlyRequestTime.trim()) {
+      toast({
+        title: 'Missing information',
+        description: 'Please provide a reason and the time you want to leave.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setEarlyRequestSubmitting(true);
+    try {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const timeValue = earlyRequestTime.length === 5 ? `${earlyRequestTime}:00` : earlyRequestTime;
+      const { error } = await supabase.from('early_checkout_requests').upsert(
+        {
+          employee_id: employeeId,
+          date: today,
+          reason: earlyRequestReason.trim(),
+          requested_checkout_time: timeValue,
+          status: 'pending',
+        },
+        { onConflict: 'employee_id,date' },
+      );
+      if (error) throw error;
+      toast({ title: 'Request submitted', description: 'Your early check-out request has been sent. You can check out at the requested time once approved.' });
+      setEarlyRequestModalOpen(false);
+      setEarlyRequestReason('');
+      setEarlyRequestTime('');
+      await fetchTodayAttendance(employeeId);
+    } catch (e) {
+      toast({
+        title: 'Error',
+        description: getErrorMessage(e) || 'Failed to submit request.',
+        variant: 'destructive',
+      });
+    } finally {
+      setEarlyRequestSubmitting(false);
     }
   };
 
@@ -757,13 +877,13 @@ export function AttendanceSystem() {
             <div>
               <p className="text-sm text-muted-foreground">Check In</p>
               <p className="font-medium">
-                {attendance?.in_time || '—'}
+                {formatTime12h(attendance?.in_time)}
               </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Check Out</p>
               <p className="font-medium">
-                {attendance?.out_time || '—'}
+                {formatTime12h(attendance?.out_time)}
               </p>
             </div>
             <div>
@@ -830,11 +950,82 @@ export function AttendanceSystem() {
                     </Button>
                   )
                 )}
+                {attendance?.in_time && !attendance?.out_time && !earlyCheckoutRequest && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setEarlyRequestModalOpen(true)}
+                    className="flex items-center gap-2"
+                  >
+                    <LogOutIcon className="h-4 w-4" />
+                    Request early check-out
+                  </Button>
+                )}
+                {attendance?.in_time && !attendance?.out_time && earlyCheckoutRequest && (
+                  <div className="flex items-center gap-2">
+                    {earlyCheckoutRequest.status === 'pending' && (
+                      <Badge variant="secondary">
+                        Early leave requested for {formatTime12h(earlyCheckoutRequest.requested_checkout_time)} – Pending
+                      </Badge>
+                    )}
+                    {earlyCheckoutRequest.status === 'approved' && (
+                      <Badge variant="default" className="bg-green-600">
+                        Early check-out approved: {formatTime12h(earlyCheckoutRequest.requested_checkout_time)}
+                      </Badge>
+                    )}
+                    {earlyCheckoutRequest.status === 'declined' && (
+                      <Badge variant="destructive">Early check-out declined</Badge>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
+          {scheduledEndTime && attendance?.in_time && !attendance?.out_time && (
+            <p className="text-xs text-muted-foreground pt-2">
+              Your scheduled end time today is {formatTime12h(scheduledEndTime)}. You can check out at or after that time
+              {earlyCheckoutRequest?.status === 'approved' ? ` or at your approved time ${formatTime12h(earlyCheckoutRequest.requested_checkout_time)}` : ''}.
+            </p>
+          )}
         </CardContent>
       </Card>
+
+      <Dialog open={earlyRequestModalOpen} onOpenChange={setEarlyRequestModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request early check-out</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Submit a request to leave early. Your manager will review it. If approved, you can check out at the requested time.
+          </p>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Reason for leaving early *</Label>
+              <Textarea
+                placeholder="e.g. Personal appointment, family matter..."
+                value={earlyRequestReason}
+                onChange={(e) => setEarlyRequestReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Time you want to leave *</Label>
+              <Input
+                type="time"
+                value={earlyRequestTime}
+                onChange={(e) => setEarlyRequestTime(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEarlyRequestModalOpen(false)} disabled={earlyRequestSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmitEarlyCheckoutRequest} disabled={earlyRequestSubmitting}>
+              {earlyRequestSubmitting ? 'Submitting...' : 'Submit request'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

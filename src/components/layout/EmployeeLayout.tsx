@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { 
   LayoutDashboard, 
   Clock, 
-  DollarSign, 
+  Banknote, 
   CheckSquare, 
   Users, 
   Bell, 
@@ -27,7 +27,7 @@ interface EmployeeLayoutProps {
 const navigationItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'attendance', label: 'Attendance', icon: Clock },
-  { id: 'salary', label: 'Salary', icon: DollarSign },
+  { id: 'salary', label: 'Salary', icon: Banknote },
   { id: 'tasks', label: 'Tasks', icon: CheckSquare },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'notifications', label: 'Notifications', icon: Bell },

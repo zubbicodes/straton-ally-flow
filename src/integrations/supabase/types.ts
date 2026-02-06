@@ -131,51 +131,149 @@ export type Database = {
         }
         Relationships: []
       }
+      duty_schedule_templates: {
+        Row: {
+          id: string
+          schedule_name: string
+          shift_type: 'regular' | 'rotating' | 'flexible' | 'night'
+          start_time: string
+          end_time: string
+          work_days: string[]
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          schedule_name: string
+          shift_type: 'regular' | 'rotating' | 'flexible' | 'night'
+          start_time: string
+          end_time: string
+          work_days?: string[]
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          schedule_name?: string
+          shift_type?: 'regular' | 'rotating' | 'flexible' | 'night'
+          start_time?: string
+          end_time?: string
+          work_days?: string[]
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      early_checkout_requests: {
+        Row: {
+          id: string
+          employee_id: string
+          date: string
+          reason: string
+          requested_checkout_time: string
+          status: 'pending' | 'approved' | 'declined'
+          reviewed_at: string | null
+          reviewed_by: string | null
+          response_notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          employee_id: string
+          date: string
+          reason: string
+          requested_checkout_time: string
+          status?: 'pending' | 'approved' | 'declined'
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          response_notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          employee_id?: string
+          date?: string
+          reason?: string
+          requested_checkout_time?: string
+          status?: 'pending' | 'approved' | 'declined'
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          response_notes?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "early_checkout_requests_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employees: {
         Row: {
           address: string | null
           created_at: string
           department_id: string | null
           designation: string | null
+          duty_schedule_template_id: string | null
+          custom_work_start_time: string | null
+          custom_work_end_time: string | null
           emergency_contact: string | null
           employee_id: string
           gender: string | null
           id: string
+          is_team_lead: boolean
           joining_date: string
           office_id: string | null
           phone: string | null
           updated_at: string
           user_id: string
+          work_location: 'remote' | 'on_site' | null
         }
         Insert: {
           address?: string | null
           created_at?: string
           department_id?: string | null
           designation?: string | null
+          duty_schedule_template_id?: string | null
+          custom_work_start_time?: string | null
+          custom_work_end_time?: string | null
           emergency_contact?: string | null
           employee_id: string
           gender?: string | null
           id?: string
+          is_team_lead?: boolean
           joining_date: string
           office_id?: string | null
           phone?: string | null
           updated_at?: string
           user_id: string
+          work_location?: 'remote' | 'on_site' | null
         }
         Update: {
           address?: string | null
           created_at?: string
           department_id?: string | null
           designation?: string | null
+          duty_schedule_template_id?: string | null
+          custom_work_start_time?: string | null
+          custom_work_end_time?: string | null
           emergency_contact?: string | null
           employee_id?: string
           gender?: string | null
           id?: string
+          is_team_lead?: boolean
           joining_date?: string
           office_id?: string | null
           phone?: string | null
           updated_at?: string
           user_id?: string
+          work_location?: 'remote' | 'on_site' | null
         }
         Relationships: [
           {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, Calendar, Download, Eye } from 'lucide-react';
+import { Banknote, TrendingUp, Calendar, Download, Eye } from 'lucide-react';
+import { formatCurrencyPKR } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -182,7 +183,7 @@ export function SalaryProgress() {
       <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
+            <Banknote className="h-5 w-5" />
             Current Salary
           </CardTitle>
         </CardHeader>
@@ -190,7 +191,7 @@ export function SalaryProgress() {
           <div className="flex items-end justify-between">
             <div>
               <div className="text-3xl font-bold text-blue-900">
-                ${currentSalary ? currentSalary.amount.toLocaleString() : '0'}
+                {currentSalary ? formatCurrencyPKR(currentSalary.amount) : formatCurrencyPKR(0)}
               </div>
               <div className="text-sm text-blue-700">
                 {currentSalary?.salary_type === 'monthly' ? 'per month' : 'per hour'}
@@ -217,7 +218,7 @@ export function SalaryProgress() {
               <div>
                 <p className="text-sm text-muted-foreground">YTD Earnings</p>
                 <p className="text-xl font-bold text-green-600">
-                  ${payslips.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.net_salary, 0).toLocaleString()}
+                  {formatCurrencyPKR(payslips.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.net_salary, 0))}
                 </p>
               </div>
             </div>
@@ -231,7 +232,7 @@ export function SalaryProgress() {
               <div>
                 <p className="text-sm text-muted-foreground">Monthly Average</p>
                 <p className="text-xl font-bold text-blue-600">
-                  ${currentSalary ? currentSalary.amount.toLocaleString() : '0'}
+                  {currentSalary ? formatCurrencyPKR(currentSalary.amount) : formatCurrencyPKR(0)}
                 </p>
               </div>
             </div>
@@ -241,7 +242,7 @@ export function SalaryProgress() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4 text-purple-600" />
+              <Banknote className="h-4 w-4 text-purple-600" />
               <div>
                 <p className="text-sm text-muted-foreground">Next Payment</p>
                 <p className="text-xl font-bold text-purple-600">
@@ -267,7 +268,7 @@ export function SalaryProgress() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" />
                   <YAxis />
-                  <Tooltip formatter={(value) => [`$${value}`, 'Salary']} />
+                  <Tooltip formatter={(value) => [formatCurrencyPKR(Number(value)), 'Salary']} />
                   <Line type="monotone" dataKey="amount" stroke="#3b82f6" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
@@ -290,7 +291,7 @@ export function SalaryProgress() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
                 <YAxis />
-                <Tooltip formatter={(value) => [`$${value}`, 'Amount']} />
+                <Tooltip formatter={(value) => [formatCurrencyPKR(Number(value)), 'Amount']} />
                 <Area type="monotone" dataKey="net_salary" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
                 <Area type="monotone" dataKey="basic_salary" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} />
               </AreaChart>
@@ -311,8 +312,8 @@ export function SalaryProgress() {
                 <div className="flex-1">
                   <div className="font-medium">{payslip.month}</div>
                   <div className="text-sm text-muted-foreground">
-                    Basic: ${payslip.basic_salary.toLocaleString()} | 
-                    Net: ${payslip.net_salary.toLocaleString()}
+                    Basic: {formatCurrencyPKR(payslip.basic_salary)} | 
+                    Net: {formatCurrencyPKR(payslip.net_salary)}
                   </div>
                   {payslip.payment_date && (
                     <div className="text-xs text-muted-foreground">

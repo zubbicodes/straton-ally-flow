@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { DollarSign, Search, Edit, History } from 'lucide-react';
+import { Banknote, Search, Edit, History } from 'lucide-react';
+import { formatCurrencyPKR } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -180,12 +181,7 @@ export default function Salaries() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
+  const formatCurrency = (amount: number) => formatCurrencyPKR(amount);
 
   return (
     <div className="p-8 space-y-6">
@@ -222,7 +218,7 @@ export default function Salaries() {
             <div className="p-8 text-center text-muted-foreground">Loading...</div>
           ) : filteredSalaries.length === 0 ? (
             <div className="p-8 text-center">
-              <DollarSign className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+              <Banknote className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
               <p className="text-muted-foreground">No salary records found</p>
             </div>
           ) : (

@@ -3,7 +3,7 @@ import {
   LayoutDashboard,
   Users,
   Calendar,
-  DollarSign,
+  Banknote,
   Clock,
   Shield,
   Settings,
@@ -25,8 +25,8 @@ const navItems = [
     icon: LayoutDashboard,
   },
   {
-    title: 'Employees',
-    href: '/admin/employees',
+    title: 'Recruitment',
+    href: '/admin/recruitment',
     icon: Users,
   },
   {
@@ -42,7 +42,7 @@ const navItems = [
   {
     title: 'Salary & Wages',
     href: '/admin/salaries',
-    icon: DollarSign,
+    icon: Banknote,
   },
   {
     title: 'Leave Management',

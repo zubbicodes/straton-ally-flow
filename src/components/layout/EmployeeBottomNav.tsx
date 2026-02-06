@@ -5,7 +5,7 @@ import {
   Clock,
   CheckSquare,
   Users,
-  DollarSign,
+  Banknote,
   Menu,
   LogOut,
   Bell,

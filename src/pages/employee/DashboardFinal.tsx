@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, CheckSquare, Clock, DollarSign, MessageSquare, Users, Bell } from 'lucide-react';
+import { Calendar, CheckSquare, Clock, Banknote, MessageSquare, Users, Bell } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { endOfMonth, format, startOfMonth } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
@@ -176,7 +176,7 @@ export default function EmployeeDashboard() {
     {
       title: 'Salary',
       subtitle: 'January paid',
-      icon: DollarSign,
+      icon: Banknote,
       href: '/employee/salary',
       indicatorClass: 'bg-success',
     },
@@ -255,7 +255,7 @@ export default function EmployeeDashboard() {
                       <p className="text-base font-semibold">{salaryLabel}</p>
                     </div>
                     <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center">
-                      <DollarSign className="h-4 w-4 text-foreground" />
+                      <Banknote className="h-4 w-4 text-foreground" />
                     </div>
                   </div>
                 </div>

@@ -63,9 +63,10 @@ const getTaskAttachment = (attachments: unknown): TaskAttachmentPayload | null =
 
 interface ChatAreaProps {
   channelId: string;
+  channelName?: string | null;
 }
 
-export function ChatArea({ channelId }: ChatAreaProps) {
+export function ChatArea({ channelId, channelName }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -569,7 +570,7 @@ export function ChatArea({ channelId }: ChatAreaProps) {
               broadcastTyping(false);
               if (typingIdleTimerRef.current) window.clearTimeout(typingIdleTimerRef.current);
             }}
-            placeholder={`Message #${channelId}`} // We should pass channel name ideally
+            placeholder={channelName ? `Message #${channelName}` : 'Message'}
             className="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-2 py-1 h-auto min-h-[40px]"
           />
           <div className="flex items-center gap-1 shrink-0">

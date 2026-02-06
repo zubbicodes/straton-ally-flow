@@ -8,7 +8,7 @@ import { TeamCollaboration } from '@/components/employee/TeamCollaboration';
 import { Notifications } from '@/components/employee/Notifications';
 import { Chat } from '@/components/employee/Chat';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Clock, Calendar, DollarSign, CheckSquare, Users, Bell, MessageSquare, TrendingUp } from 'lucide-react';
+import { Clock, Calendar, Banknote, CheckSquare, Users, Bell, MessageSquare, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
 
@@ -85,11 +85,11 @@ export default function EmployeeDashboard() {
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-purple-100 rounded-lg">
-                <DollarSign className="h-6 w-6 text-purple-600" />
+                <Banknote className="h-6 w-6 text-purple-600" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Monthly Salary</p>
-                <p className="text-2xl font-bold">$5,000</p>
+                <p className="text-2xl font-bold">Rs. 140,000</p>
               </div>
             </div>
           </CardContent>
@@ -169,7 +169,7 @@ export default function EmployeeDashboard() {
         <Card className="card-elevated cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setCurrentPage('salary')}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
+              <Banknote className="h-5 w-5" />
               Salary & Payslips
             </CardTitle>
           </CardHeader>

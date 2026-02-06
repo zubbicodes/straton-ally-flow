@@ -15,7 +15,6 @@ import NotFound from "./pages/NotFound";
 // Admin Pages
 import { FlowHRLayout } from "./components/layout/FlowHRLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
-import Employees from "./pages/admin/Employees";
 import EditEmployee from "./pages/admin/EditEmployee";
 import NewEmployee from "./pages/admin/NewEmployee";
 import Departments from "./pages/admin/Departments";
@@ -69,7 +68,7 @@ const App = () => (
             >
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<AdminDashboard />} />
-              <Route path="employees" element={<Employees />} />
+              <Route path="employees" element={<Navigate to="/admin/recruitment?tab=employees" replace />} />
               <Route path="employees/new" element={<NewEmployee />} />
               <Route path="employees/:id/edit" element={<EditEmployee />} />
               <Route path="departments" element={<Departments />} />

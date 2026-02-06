@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Calendar, Clock, Search, Plus, Check, X, Coffee } from 'lucide-react';
+import { Calendar, Clock, Search, Plus, Check, X, Coffee, LogOutIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +20,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -28,6 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { formatTime12h } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -51,12 +53,28 @@ interface Employee {
   full_name: string;
 }
 
+interface EarlyCheckoutRequestRow {
+  id: string;
+  employee_id: string;
+  date: string;
+  reason: string;
+  requested_checkout_time: string;
+  status: string;
+  created_at: string;
+  employee?: { employee_id: string; full_name?: string };
+}
+
 export default function Attendance() {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [earlyRequests, setEarlyRequests] = useState<EarlyCheckoutRequestRow[]>([]);
+  const [reviewModal, setReviewModal] = useState<{ id: string; employeeName: string; reason: string; time: string } | null>(null);
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [reviewAction, setReviewAction] = useState<'approve' | 'decline' | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const { toast } = useToast();
 
   // New attendance form state
@@ -193,6 +211,94 @@ export default function Attendance() {
     }
   };
 
+  const fetchEarlyCheckoutRequests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('early_checkout_requests')
+        .select('id, employee_id, date, reason, requested_checkout_time, status, created_at')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data?.length) {
+        const withNames = await Promise.all(
+          (data as EarlyCheckoutRequestRow[]).map(async (row) => {
+            const { data: emp } = await supabase
+              .from('employees')
+              .select('id, employee_id, user_id')
+              .eq('id', row.employee_id)
+              .single();
+            if (!emp) return { ...row, employee: { employee_id: '', full_name: 'Unknown' } };
+            const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', emp.user_id).single();
+            return {
+              ...row,
+              employee: { employee_id: emp.employee_id, full_name: profile?.full_name ?? 'Unknown' },
+            };
+          }),
+        );
+        setEarlyRequests(withNames);
+      } else {
+        setEarlyRequests([]);
+      }
+    } catch (e) {
+      console.error('Error fetching early checkout requests:', e);
+      setEarlyRequests([]);
+    }
+  };
+
+  const openReview = (req: EarlyCheckoutRequestRow, action: 'approve' | 'decline') => {
+    setReviewModal({
+      id: req.id,
+      employeeName: req.employee?.full_name ?? 'Unknown',
+      reason: req.reason,
+      time: req.requested_checkout_time,
+    });
+    setReviewAction(action);
+    setReviewNotes('');
+  };
+
+  const submitReview = async () => {
+    if (!reviewModal || !reviewAction) return;
+    setReviewSubmitting(true);
+    try {
+      const { data: user } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('early_checkout_requests')
+        .update({
+          status: reviewAction === 'approve' ? 'approved' : 'declined',
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: user.user?.id ?? null,
+          response_notes: reviewNotes.trim() || null,
+        })
+        .eq('id', reviewModal.id);
+
+      if (error) throw error;
+      toast({
+        title: reviewAction === 'approve' ? 'Request approved' : 'Request declined',
+        description: reviewAction === 'approve'
+          ? 'The employee can now check out at the requested time.'
+          : 'The employee has been notified.',
+      });
+      setReviewModal(null);
+      setReviewAction(null);
+      setReviewNotes('');
+      await fetchEarlyCheckoutRequests();
+    } catch (e) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : 'Failed to update request',
+        variant: 'destructive',
+      });
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEarlyCheckoutRequests();
+  }, []);
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'present':
@@ -300,6 +406,51 @@ export default function Attendance() {
         </Dialog>
       </div>
 
+      {/* Early check-out requests */}
+      <Card className="card-elevated">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LogOutIcon className="h-5 w-5" />
+            Early check-out requests
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Approve or decline employee requests to leave early. Approved employees can check out at the requested time.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {earlyRequests.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No pending requests.</p>
+          ) : (
+            <div className="space-y-3">
+              {earlyRequests.map((req) => (
+                <div
+                  key={req.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium">{req.employee?.full_name ?? 'Unknown'}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {req.employee?.employee_id} · {format(new Date(req.date), 'MMM d, yyyy')} · Leave at {formatTime12h(req.requested_checkout_time)}
+                    </p>
+                    <p className="text-sm mt-1">{req.reason}</p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700" onClick={() => openReview(req, 'approve')}>
+                      <Check className="h-4 w-4 mr-1" />
+                      Approve
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => openReview(req, 'decline')}>
+                      <X className="h-4 w-4 mr-1" />
+                      Decline
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Date Picker */}
       <Card className="card-elevated">
         <CardContent className="pt-6">
@@ -360,8 +511,8 @@ export default function Attendance() {
                         {record.employee.employee_id}
                       </code>
                     </TableCell>
-                    <TableCell>{record.in_time || '—'}</TableCell>
-                    <TableCell>{record.out_time || '—'}</TableCell>
+                    <TableCell>{formatTime12h(record.in_time)}</TableCell>
+                    <TableCell>{formatTime12h(record.out_time)}</TableCell>
                     <TableCell>{getStatusBadge(record.status)}</TableCell>
                   </TableRow>
                 ))}
@@ -371,6 +522,45 @@ export default function Attendance() {
           )}
         </CardContent>
       </Card>
+
+      {/* Review early checkout modal */}
+      <Dialog open={!!reviewModal} onOpenChange={(open) => !open && setReviewModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{reviewAction === 'approve' ? 'Approve' : 'Decline'} early check-out</DialogTitle>
+          </DialogHeader>
+          {reviewModal && (
+            <>
+              <p className="text-sm">
+                <span className="font-medium">{reviewModal.employeeName}</span> requested to leave at {formatTime12h(reviewModal.time)}.
+              </p>
+              <p className="text-sm text-muted-foreground">Reason: {reviewModal.reason}</p>
+              <div className="space-y-2">
+                <Label>Response notes (optional)</Label>
+                <Textarea
+                  placeholder="e.g. Approved for medical appointment"
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  rows={2}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setReviewModal(null)} disabled={reviewSubmitting}>
+                  Cancel
+                </Button>
+                <Button
+                  variant={reviewAction === 'decline' ? 'destructive' : 'default'}
+                  className={reviewAction === 'approve' ? 'bg-green-600 hover:bg-green-700' : ''}
+                  onClick={submitReview}
+                  disabled={reviewSubmitting}
+                >
+                  {reviewSubmitting ? 'Saving...' : reviewAction === 'approve' ? 'Approve' : 'Decline'}
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

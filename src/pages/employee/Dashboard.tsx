@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Clock, Calendar, DollarSign, User, LogOut } from 'lucide-react';
+import { Clock, Calendar, Banknote, User, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { signOut } from '@/lib/auth';
+import { formatTime12h } from '@/lib/utils';
 import { format } from 'date-fns';
 
 interface EmployeeData {
@@ -74,7 +75,7 @@ export default function EmployeeDashboard() {
             if (attendance) {
               setAttendanceToday(
                 `${attendance.status === 'present' ? 'Present' : attendance.status} ${
-                  attendance.in_time ? `at ${attendance.in_time}` : ''
+                  attendance.in_time ? `at ${formatTime12h(attendance.in_time)}` : ''
                 }`
               );
             }
@@ -162,7 +163,7 @@ export default function EmployeeDashboard() {
           <StatCard
             title="Designation"
             value={employeeData?.designation || 'Not Set'}
-            icon={DollarSign}
+            icon={Banknote}
           />
         </div>
 
@@ -231,7 +232,7 @@ export default function EmployeeDashboard() {
               <Badge variant="secondary">Coming Soon</Badge>
             </Button>
             <Button variant="outline" className="h-auto py-6 flex flex-col gap-2" disabled>
-              <DollarSign className="h-6 w-6" />
+              <Banknote className="h-6 w-6" />
               <span>View Payslip</span>
               <Badge variant="secondary">Coming Soon</Badge>
             </Button>

@@ -16,12 +16,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { createUserAsAdmin } from '@/lib/auth-service';
 import { supabase } from '@/integrations/supabase/client';
 
 const employeeSchema = z.object({
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
+  employeeId: z.string().min(1, 'Employee ID is required'),
   gender: z.enum(['male', 'female', 'other'], { required_error: 'Gender is required' }),
   email: z
     .string()
@@ -34,6 +36,8 @@ const employeeSchema = z.object({
   phone: z.string().optional(),
   address: z.string().optional(),
   role: z.enum(['admin', 'employee']),
+  isTeamLead: z.boolean().optional(),
+  workLocation: z.enum(['remote', 'on_site']).nullable().optional(),
   salaryType: z.enum(['monthly', 'hourly']).optional(),
   salaryAmount: z.string().optional(),
 });
@@ -50,7 +54,6 @@ export default function NewEmployee() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [generatedEmployeeId, setGeneratedEmployeeId] = useState('');
 
   const {
     register,
@@ -63,42 +66,20 @@ export default function NewEmployee() {
     defaultValues: {
       role: 'employee',
       joiningDate: new Date().toISOString().split('T')[0],
+      isTeamLead: false,
+      workLocation: 'on_site',
     },
   });
 
   const selectedRole = watch('role');
+  const workLocation = watch('workLocation');
 
-  // Generate employee ID when role changes
-  useEffect(() => {
-    const generateEmployeeId = async () => {
-      try {
-        const prefix = selectedRole === 'admin' ? 'SAADM' : 'SAEMP';
-        
-        // Get the latest employee ID for this role
-        const { data: latestEmployee } = await supabase
-          .from('employees')
-          .select('employee_id')
-          .like('employee_id', `${prefix}%`)
-          .order('employee_id', { ascending: false })
-          .limit(1)
-          .single();
-
-        let newId = `${prefix}001`;
-        if (latestEmployee?.employee_id) {
-          const currentNumber = parseInt(latestEmployee.employee_id.replace(prefix, ''));
-          newId = `${prefix}${String(currentNumber + 1).padStart(3, '0')}`;
-        }
-
-        setGeneratedEmployeeId(newId);
-      } catch (error) {
-        // If no employees exist yet, start with 001
-        const prefix = selectedRole === 'admin' ? 'SAADM' : 'SAEMP';
-        setGeneratedEmployeeId(`${prefix}001`);
-      }
-    };
-
-    generateEmployeeId();
-  }, [selectedRole]);
+  const handleRemoteChange = (checked: boolean) => {
+    setValue('workLocation', checked ? 'remote' : 'on_site');
+  };
+  const handleOnSiteChange = (checked: boolean) => {
+    setValue('workLocation', checked ? 'on_site' : 'on_site');
+  };
 
   useEffect(() => {
     async function fetchDepartments() {
@@ -136,18 +117,20 @@ export default function NewEmployee() {
 
       if (roleError) throw roleError;
 
-      // Create employee record with generated ID
+      // Create employee record with admin-entered ID and hierarchy options
       const { data: employeeData, error: empError } = await supabase
         .from('employees')
         .insert({
           user_id: userId,
-          employee_id: generatedEmployeeId,
+          employee_id: data.employeeId.trim(),
           gender: data.gender,
           department_id: data.departmentId || null,
           designation: data.designation || null,
           joining_date: data.joiningDate,
           phone: data.phone || null,
           address: data.address || null,
+          is_team_lead: data.isTeamLead ?? false,
+          work_location: data.workLocation ?? 'on_site',
         })
         .select()
         .single();
@@ -167,10 +150,10 @@ export default function NewEmployee() {
 
       toast({
         title: 'Employee created',
-        description: `${data.fullName} (${generatedEmployeeId}) has been added successfully`,
+        description: `${data.fullName} (${data.employeeId}) has been added successfully`,
       });
 
-      navigate('/admin/employees');
+      navigate('/admin/recruitment?tab=employees');
     } catch (error: unknown) {
       console.error('Error creating employee:', error);
       toast({
@@ -253,14 +236,17 @@ export default function NewEmployee() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="employeeId">Employee ID</Label>
+              <Label htmlFor="employeeId">Employee ID *</Label>
               <Input
                 id="employeeId"
-                value={generatedEmployeeId}
-                disabled
-                className="h-11 bg-muted"
+                placeholder="e.g. SAEMP001"
+                {...register('employeeId')}
+                className="h-11"
               />
-              <p className="text-xs text-muted-foreground">Auto-generated based on role</p>
+              <p className="text-xs text-muted-foreground">Entered manually by admin; must be unique</p>
+              {errors.employeeId && (
+                <p className="text-sm text-destructive">{errors.employeeId.message}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -349,6 +335,55 @@ export default function NewEmployee() {
               {errors.joiningDate && (
                 <p className="text-sm text-destructive">{errors.joiningDate.message}</p>
               )}
+            </div>
+
+            <div className="space-y-2 md:col-span-2 flex items-center space-x-2">
+              <Checkbox
+                id="isTeamLead"
+                checked={watch('isTeamLead')}
+                onCheckedChange={(checked) => setValue('isTeamLead', !!checked)}
+              />
+              <label
+                htmlFor="isTeamLead"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Team lead (Only Select if the employee is a team lead)
+              </label>
+            </div>
+
+            <div className="space-y-2 md:col-span-2 flex flex-col gap-4">
+              <Label>Work arrangement</Label>
+              {workLocation === 'remote' && (
+                <p className="text-xs text-destructive">Note: Selecting Remote will remove any location/IP restriction for the employee.</p>
+              )}
+              <div className="flex items-center gap-6">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="workLocationRemote"
+                    checked={workLocation === 'remote'}
+                    onCheckedChange={handleRemoteChange}
+                  />
+                  <label
+                    htmlFor="workLocationRemote"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Remote
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="workLocationOnSite"
+                    checked={workLocation === 'on_site'}
+                    onCheckedChange={handleOnSiteChange}
+                  />
+                  <label
+                    htmlFor="workLocationOnSite"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    On-site
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2 md:col-span-2">
