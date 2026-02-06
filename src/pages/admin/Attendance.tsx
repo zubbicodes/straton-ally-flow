@@ -244,8 +244,8 @@ export default function Attendance() {
       const { data, error } = await supabase
         .from('early_checkout_requests')
         .select('id, employee_id, date, reason, requested_checkout_time, status, created_at, reviewed_at, response_notes')
-        .order('created_at', { ascending: false })
-        .limit(200);
+        .eq('date', selectedDate)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -325,7 +325,7 @@ export default function Attendance() {
 
   useEffect(() => {
     fetchEarlyCheckoutRequests();
-  }, []);
+  }, [selectedDate]);
 
   /** Compare two time strings "HH:mm:ss" or "HH:mm". Returns -1 if a < b, 0 if equal, 1 if a > b */
   const compareTime = (a: string | null | undefined, b: string | null | undefined): number => {
@@ -476,7 +476,7 @@ export default function Attendance() {
             Early check-out requests
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Approve or decline pending requests. Approved and rejected requests are listed below.
+            Requests for {format(new Date(selectedDate + 'T12:00:00'), 'MMMM d, yyyy')}. Approve or decline pending; approved and rejected are listed below.
           </p>
         </CardHeader>
         <CardContent className="space-y-6">
