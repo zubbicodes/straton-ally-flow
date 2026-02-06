@@ -104,6 +104,8 @@ export function AttendanceSystem() {
     requested_checkout_time: string;
     reason: string;
   } | null>(null);
+  const [todayEarlyRequestCount, setTodayEarlyRequestCount] = useState(0);
+  const [approvedCheckoutTime, setApprovedCheckoutTime] = useState<string | null>(null);
   const [earlyRequestModalOpen, setEarlyRequestModalOpen] = useState(false);
   const [earlyRequestReason, setEarlyRequestReason] = useState('');
   const [earlyRequestTime, setEarlyRequestTime] = useState('');
@@ -363,22 +365,29 @@ export function AttendanceSystem() {
         setAttendance(null);
       }
 
-      // Fetch today's early checkout request for this employee
-      const { data: earlyRequest } = await supabase
+      // Fetch all of today's early checkout requests (latest first) for badge and 3-per-day limit
+      const { data: earlyRequestsToday } = await supabase
         .from('early_checkout_requests')
         .select('id, status, requested_checkout_time, reason')
         .eq('employee_id', effectiveEmployeeId)
         .eq('date', today)
-        .maybeSingle();
+        .order('created_at', { ascending: false });
+      const list = earlyRequestsToday ?? [];
+      setTodayEarlyRequestCount(list.length);
+      const latest = list[0];
       setEarlyCheckoutRequest(
-        earlyRequest
+        latest
           ? {
-              id: earlyRequest.id,
-              status: earlyRequest.status as 'pending' | 'approved' | 'declined',
-              requested_checkout_time: String(earlyRequest.requested_checkout_time).slice(0, 8),
-              reason: earlyRequest.reason ?? '',
+              id: latest.id,
+              status: latest.status as 'pending' | 'approved' | 'declined',
+              requested_checkout_time: String(latest.requested_checkout_time).slice(0, 8),
+              reason: latest.reason ?? '',
             }
           : null,
+      );
+      const latestApproved = list.find((r) => r.status === 'approved');
+      setApprovedCheckoutTime(
+        latestApproved ? String(latestApproved.requested_checkout_time).slice(0, 8) : null,
       );
     } catch (error) {
       console.error('Error fetching attendance:', error);
@@ -568,7 +577,7 @@ export function AttendanceSystem() {
   };
 
   const getEarliestCheckoutTime = (): string | null => {
-    if (earlyCheckoutRequest?.status === 'approved') return earlyCheckoutRequest.requested_checkout_time;
+    if (approvedCheckoutTime) return approvedCheckoutTime;
     return scheduledEndTime;
   };
 
@@ -594,7 +603,7 @@ export function AttendanceSystem() {
       if (now < cutoff) {
         toast({
           title: "Cannot check out yet",
-          description: `You must complete your duty hours. Earliest checkout time is ${formatTime12h(earliest)}.${earlyCheckoutRequest?.status === 'approved' ? ' (You have an approved early leave request for this time.)' : ''}`,
+          description: `You must complete your duty hours. Earliest checkout time is ${formatTime12h(earliest)}.${approvedCheckoutTime ? ' (You have an approved early leave request for this time.)' : ''}`,
           variant: "destructive",
         });
         return;
@@ -722,16 +731,13 @@ export function AttendanceSystem() {
     try {
       const today = format(new Date(), 'yyyy-MM-dd');
       const timeValue = earlyRequestTime.length === 5 ? `${earlyRequestTime}:00` : earlyRequestTime;
-      const { error } = await supabase.from('early_checkout_requests').upsert(
-        {
-          employee_id: employeeId,
-          date: today,
-          reason: earlyRequestReason.trim(),
-          requested_checkout_time: timeValue,
-          status: 'pending',
-        },
-        { onConflict: 'employee_id,date' },
-      );
+      const { error } = await supabase.from('early_checkout_requests').insert({
+        employee_id: employeeId,
+        date: today,
+        reason: earlyRequestReason.trim(),
+        requested_checkout_time: timeValue,
+        status: 'pending',
+      });
       if (error) throw error;
       toast({ title: 'Request submitted', description: 'Your early check-out request has been sent. You can check out at the requested time once approved.' });
       setEarlyRequestModalOpen(false);
@@ -950,7 +956,7 @@ export function AttendanceSystem() {
                     </Button>
                   )
                 )}
-                {attendance?.in_time && !attendance?.out_time && !earlyCheckoutRequest && (
+                {attendance?.in_time && !attendance?.out_time && !earlyCheckoutRequest && todayEarlyRequestCount < 3 && (
                   <Button
                     variant="outline"
                     onClick={() => setEarlyRequestModalOpen(true)}
@@ -960,7 +966,10 @@ export function AttendanceSystem() {
                     Request early check-out
                   </Button>
                 )}
-                {attendance?.in_time && !attendance?.out_time && earlyCheckoutRequest && (
+                {attendance?.in_time && !attendance?.out_time && (!earlyCheckoutRequest || earlyCheckoutRequest.status === 'declined') && todayEarlyRequestCount >= 3 && (
+                  <p className="text-sm text-muted-foreground">You can only submit 3 early check-out requests per day.</p>
+                )}
+                {attendance?.in_time && !attendance?.out_time && earlyCheckoutRequest && earlyCheckoutRequest.status !== 'declined' && (
                   <div className="flex items-center gap-2">
                     {earlyCheckoutRequest.status === 'pending' && (
                       <Badge variant="secondary">
@@ -972,10 +981,21 @@ export function AttendanceSystem() {
                         Early check-out approved: {formatTime12h(earlyCheckoutRequest.requested_checkout_time)}
                       </Badge>
                     )}
-                    {earlyCheckoutRequest.status === 'declined' && (
-                      <Badge variant="destructive">Early check-out declined</Badge>
-                    )}
                   </div>
+                )}
+                {attendance?.in_time && !attendance?.out_time && earlyCheckoutRequest?.status === 'declined' && todayEarlyRequestCount < 3 && (
+                  <>
+                    <Badge variant="destructive" className="mr-1">Early check-out declined</Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEarlyRequestModalOpen(true)}
+                      className="flex items-center gap-2"
+                    >
+                      <LogOutIcon className="h-4 w-4" />
+                      Request again
+                    </Button>
+                  </>
                 )}
               </>
             )}
@@ -983,7 +1003,7 @@ export function AttendanceSystem() {
           {scheduledEndTime && attendance?.in_time && !attendance?.out_time && (
             <p className="text-xs text-muted-foreground pt-2">
               Your scheduled end time today is {formatTime12h(scheduledEndTime)}. You can check out at or after that time
-              {earlyCheckoutRequest?.status === 'approved' ? ` or at your approved time ${formatTime12h(earlyCheckoutRequest.requested_checkout_time)}` : ''}.
+              {approvedCheckoutTime ? ` or at your approved time ${formatTime12h(approvedCheckoutTime)}` : ''}.
             </p>
           )}
         </CardContent>

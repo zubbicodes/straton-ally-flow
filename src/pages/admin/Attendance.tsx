@@ -61,6 +61,8 @@ interface EarlyCheckoutRequestRow {
   requested_checkout_time: string;
   status: string;
   created_at: string;
+  reviewed_at?: string | null;
+  response_notes?: string | null;
   employee?: { employee_id: string; full_name?: string };
 }
 
@@ -215,9 +217,9 @@ export default function Attendance() {
     try {
       const { data, error } = await supabase
         .from('early_checkout_requests')
-        .select('id, employee_id, date, reason, requested_checkout_time, status, created_at')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
+        .select('id, employee_id, date, reason, requested_checkout_time, status, created_at, reviewed_at, response_notes')
+        .order('created_at', { ascending: false })
+        .limit(200);
 
       if (error) throw error;
 
@@ -414,40 +416,103 @@ export default function Attendance() {
             Early check-out requests
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Approve or decline employee requests to leave early. Approved employees can check out at the requested time.
+            Approve or decline pending requests. Approved and rejected requests are listed below.
           </p>
         </CardHeader>
-        <CardContent>
-          {earlyRequests.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No pending requests.</p>
-          ) : (
-            <div className="space-y-3">
-              {earlyRequests.map((req) => (
-                <div
-                  key={req.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium">{req.employee?.full_name ?? 'Unknown'}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {req.employee?.employee_id} · {format(new Date(req.date), 'MMM d, yyyy')} · Leave at {formatTime12h(req.requested_checkout_time)}
-                    </p>
-                    <p className="text-sm mt-1">{req.reason}</p>
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700" onClick={() => openReview(req, 'approve')}>
-                      <Check className="h-4 w-4 mr-1" />
-                      Approve
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => openReview(req, 'decline')}>
-                      <X className="h-4 w-4 mr-1" />
-                      Decline
-                    </Button>
-                  </div>
+        <CardContent className="space-y-6">
+          {(() => {
+            const pending = earlyRequests.filter((r) => r.status === 'pending');
+            const approved = earlyRequests.filter((r) => r.status === 'approved');
+            const declined = earlyRequests.filter((r) => r.status === 'declined');
+            return (
+              <>
+                {/* Pending */}
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground mb-2">Pending</h3>
+                  {pending.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">No pending requests.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {pending.map((req) => (
+                        <div
+                          key={req.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium">{req.employee?.full_name ?? 'Unknown'}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {req.employee?.employee_id} · {format(new Date(req.date), 'MMM d, yyyy')} · Leave at {formatTime12h(req.requested_checkout_time)}
+                            </p>
+                            <p className="text-sm mt-1">{req.reason}</p>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700" onClick={() => openReview(req, 'approve')}>
+                              <Check className="h-4 w-4 mr-1" />
+                              Approve
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => openReview(req, 'decline')}>
+                              <X className="h-4 w-4 mr-1" />
+                              Decline
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
+                {/* Approved */}
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground mb-2">Approved</h3>
+                  {approved.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">None.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {approved.map((req) => (
+                        <div key={req.id} className="rounded-lg border p-3">
+                          <p className="font-medium">{req.employee?.full_name ?? 'Unknown'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {req.employee?.employee_id} · {format(new Date(req.date), 'MMM d, yyyy')} · Leave at {formatTime12h(req.requested_checkout_time)}
+                          </p>
+                          <p className="text-sm mt-1">{req.reason}</p>
+                          {req.reviewed_at && (
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Reviewed {format(new Date(req.reviewed_at), 'MMM d, yyyy h:mm a')}
+                              {req.response_notes ? ` · ${req.response_notes}` : ''}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Rejected */}
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground mb-2">Rejected</h3>
+                  {declined.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">None.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {declined.map((req) => (
+                        <div key={req.id} className="rounded-lg border p-3">
+                          <p className="font-medium">{req.employee?.full_name ?? 'Unknown'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {req.employee?.employee_id} · {format(new Date(req.date), 'MMM d, yyyy')} · Leave at {formatTime12h(req.requested_checkout_time)}
+                          </p>
+                          <p className="text-sm mt-1">{req.reason}</p>
+                          {req.reviewed_at && (
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Reviewed {format(new Date(req.reviewed_at), 'MMM d, yyyy h:mm a')}
+                              {req.response_notes ? ` · ${req.response_notes}` : ''}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </CardContent>
       </Card>
 
