@@ -44,6 +44,9 @@ interface AttendanceRecord {
     employee_id: string;
     full_name: string;
   };
+  /** Scheduled start/end for this date (from template or custom), for badge logic */
+  scheduleStart?: string | null;
+  scheduleEnd?: string | null;
 }
 
 interface Employee {
@@ -130,15 +133,21 @@ export default function Attendance() {
       if (error) throw error;
 
       if (data) {
+        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const selectedDayName = dayNames[new Date(selectedDate + 'T12:00:00').getDay()];
+
         const withEmployeeInfo = await Promise.all(
           data.map(async (record) => {
             const { data: emp } = await supabase
               .from('employees')
-              .select('id, employee_id, user_id')
+              .select('id, employee_id, user_id, duty_schedule_template_id, custom_work_start_time, custom_work_end_time')
               .eq('id', record.employee_id)
               .single();
 
             let fullName = 'Unknown';
+            let scheduleStart: string | null = null;
+            let scheduleEnd: string | null = null;
+
             if (emp) {
               const { data: profile } = await supabase
                 .from('profiles')
@@ -146,6 +155,21 @@ export default function Attendance() {
                 .eq('id', emp.user_id)
                 .single();
               fullName = profile?.full_name || 'Unknown';
+
+              if (emp.custom_work_start_time) scheduleStart = String(emp.custom_work_start_time).slice(0, 8);
+              if (emp.custom_work_end_time) scheduleEnd = String(emp.custom_work_end_time).slice(0, 8);
+              if ((!scheduleStart || !scheduleEnd) && emp.duty_schedule_template_id) {
+                const { data: template } = await supabase
+                  .from('duty_schedule_templates')
+                  .select('start_time, end_time, work_days')
+                  .eq('id', emp.duty_schedule_template_id)
+                  .single();
+                const workDays = (template?.work_days as string[] | null) ?? [];
+                if (template && workDays.map((d) => d?.toLowerCase()).includes(selectedDayName)) {
+                  if (!scheduleStart && template.start_time) scheduleStart = String(template.start_time).slice(0, 8);
+                  if (!scheduleEnd && template.end_time) scheduleEnd = String(template.end_time).slice(0, 8);
+                }
+              }
             }
 
             return {
@@ -155,6 +179,8 @@ export default function Attendance() {
                 employee_id: emp?.employee_id || '',
                 full_name: fullName,
               },
+              scheduleStart: scheduleStart ?? null,
+              scheduleEnd: scheduleEnd ?? null,
             };
           })
         );
@@ -301,6 +327,24 @@ export default function Attendance() {
     fetchEarlyCheckoutRequests();
   }, []);
 
+  /** Compare two time strings "HH:mm:ss" or "HH:mm". Returns -1 if a < b, 0 if equal, 1 if a > b */
+  const compareTime = (a: string | null | undefined, b: string | null | undefined): number => {
+    if (!a || !b) return 0;
+    const parts = (t: string) => t.trim().split(':');
+    const toNorm = (t: string) => {
+      const p = parts(t);
+      const h = (p[0] ?? '0').padStart(2, '0');
+      const m = (p[1] ?? '0').padStart(2, '0');
+      const s = (p[2] ?? '0').padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    };
+    const na = toNorm(a);
+    const nb = toNorm(b);
+    if (na < nb) return -1;
+    if (na > nb) return 1;
+    return 0;
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'present':
@@ -314,6 +358,22 @@ export default function Attendance() {
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
+  };
+
+  const getTimingBadges = (record: AttendanceRecord) => {
+    const badges: React.ReactNode[] = [];
+    const { in_time, out_time, status, scheduleStart, scheduleEnd } = record;
+    if (status === 'absent') return badges;
+    if (scheduleStart && in_time) {
+      const cmpIn = compareTime(in_time, scheduleStart);
+      if (cmpIn < 0) badges.push(<Badge key="early-in" variant="secondary" className="text-xs bg-green-100 text-green-800 border-0">Early check-in</Badge>);
+      if (cmpIn > 0) badges.push(<Badge key="late" variant="secondary" className="text-xs bg-amber-100 text-amber-800 border-0">Late</Badge>);
+    }
+    if (scheduleEnd && out_time) {
+      const cmpOut = compareTime(out_time, scheduleEnd);
+      if (cmpOut < 0) badges.push(<Badge key="early-out" variant="secondary" className="text-xs bg-blue-100 text-blue-800 border-0">Early check-out</Badge>);
+    }
+    return badges;
   };
 
   return (
@@ -578,7 +638,12 @@ export default function Attendance() {
                     </TableCell>
                     <TableCell>{formatTime12h(record.in_time)}</TableCell>
                     <TableCell>{formatTime12h(record.out_time)}</TableCell>
-                    <TableCell>{getStatusBadge(record.status)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        {getStatusBadge(record.status)}
+                        {getTimingBadges(record)}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -191,6 +191,55 @@ export function AttendanceSystem() {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   };
 
+  /** Time string "HH:mm:ss" or "HH:mm" to minutes since midnight */
+  const timeToMinutesSinceMidnight = (t: string | null | undefined): number | null => {
+    if (!t || typeof t !== 'string') return null;
+    const parts = t.trim().split(':').map(Number);
+    if (parts.length < 2) return null;
+    const h = parts[0] ?? 0;
+    const m = parts[1] ?? 0;
+    const s = parts[2] ?? 0;
+    return h * 60 + m + s / 60;
+  };
+
+  /** Live duty duration in seconds (excludes break). Updates with currentTime. */
+  const getDutyDurationSeconds = (): number | null => {
+    if (!attendance?.in_time) return null;
+    const inMins = timeToMinutesSinceMidnight(attendance.in_time);
+    if (inMins === null) return null;
+    const dateOnly = format(currentTime, 'yyyy-MM-dd');
+    const recordDate = attendance.date;
+    if (dateOnly !== recordDate) return null;
+
+    let breakMinutesSoFar = attendance.break_total_minutes ?? 0;
+    if (attendance.break_start_at) {
+      const breakStart = new Date(attendance.break_start_at);
+      breakMinutesSoFar += (currentTime.getTime() - breakStart.getTime()) / 60000;
+    }
+
+    if (attendance.out_time) {
+      const outMins = timeToMinutesSinceMidnight(attendance.out_time);
+      if (outMins === null) return null;
+      const dutyMins = Math.max(0, outMins - inMins - (attendance.break_total_minutes ?? 0));
+      return Math.round(dutyMins * 60);
+    }
+
+    const nowMins = currentTime.getHours() * 60 + currentTime.getMinutes() + currentTime.getSeconds() / 60;
+    const dutyMins = Math.max(0, nowMins - inMins - breakMinutesSoFar);
+    return Math.round(dutyMins * 60);
+  };
+
+  const formatDuration = (totalSeconds: number) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    const parts: string[] = [];
+    if (h > 0) parts.push(`${h}h`);
+    parts.push(`${m}m`);
+    parts.push(`${s}s`);
+    return parts.join(' ');
+  };
+
   const getGeoPosition = async () => {
     if (!navigator.geolocation) return null;
     try {
@@ -908,6 +957,21 @@ export function AttendanceSystem() {
                     : '—'}
               </p>
             </div>
+            {attendance?.in_time && (
+              <div className="col-span-2">
+                <p className="text-sm text-muted-foreground">Time on duty</p>
+                <p className="font-semibold text-lg tabular-nums">
+                  {(() => {
+                    const secs = getDutyDurationSeconds();
+                    if (secs === null) return '—';
+                    return formatDuration(secs);
+                  })()}
+                </p>
+                {!attendance?.out_time && (
+                  <p className="text-xs text-muted-foreground mt-0.5">Updating live</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
