@@ -34,6 +34,7 @@ import { formatTimeOnlyInTimeZone, PAKISTAN_TIME_ZONE, UK_TIME_ZONE, zonedTimeTo
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { MonthlyAttendanceChart } from '@/components/admin/MonthlyAttendanceChart';
 
 const ATTENDANCE_GRACE_MINUTES = 15;
 
@@ -864,6 +865,8 @@ export default function Attendance() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <MonthlyAttendanceChart employees={employees} initialMonth={selectedDate} />
 
       {/* Early check-out requests */}
       <Card className="card-elevated">
