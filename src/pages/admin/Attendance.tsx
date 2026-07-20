@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { format } from 'date-fns';
-import { Calendar, Clock, Search, Plus, Check, X, Coffee, LogOutIcon, Edit, Trash2, Filter, RotateCcw } from 'lucide-react';
+import { endOfMonth, format, parseISO } from 'date-fns';
+import { Calendar, Clock, Search, Plus, Check, X, Coffee, LogOutIcon, Edit, Trash2, Filter, RotateCcw, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { formatTime12h } from '@/lib/utils';
+import { downloadCsv } from '@/lib/csv';
 import { formatTimeOnlyInTimeZone, PAKISTAN_TIME_ZONE, UK_TIME_ZONE, zonedTimeToUtc } from '@/lib/timezones';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -37,6 +38,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { MonthlyAttendanceChart } from '@/components/admin/MonthlyAttendanceChart';
 
 const ATTENDANCE_GRACE_MINUTES = 15;
+const EXPORT_PAGE_SIZE = 1000;
 
 interface AttendanceRecord {
   id: string;
@@ -104,12 +106,27 @@ interface OvertimeRequestRow {
   employee?: { employee_id: string; full_name?: string };
 }
 
+interface MonthlyAttendanceExportRow {
+  date: string;
+  in_time: string | null;
+  out_time: string | null;
+  check_in_at: string | null;
+  status: string;
+  attendance_time_zone_name: string | null;
+  attendance_time_zone: string | null;
+  break_total_minutes: number;
+  total_work_minutes: number | null;
+  employee_id: string;
+}
+
 export default function Attendance() {
   const { user } = useAuth();
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [offices, setOffices] = useState<Office[]>([]);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [exportMonth, setExportMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
@@ -198,6 +215,115 @@ export default function Attendance() {
       timeFrom: '',
       timeTo: '',
     });
+  };
+
+  const formatStatusLabel = (status: string) => status
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+  const handleExportMonthlyAttendance = async () => {
+    if (!exportMonth) return;
+
+    setIsExporting(true);
+    try {
+      const monthStart = `${exportMonth}-01`;
+      const monthEnd = format(endOfMonth(parseISO(monthStart)), 'yyyy-MM-dd');
+      const records: MonthlyAttendanceExportRow[] = [];
+
+      for (let from = 0; ; from += EXPORT_PAGE_SIZE) {
+        const { data, error } = await supabase
+          .from('attendance')
+          .select(`
+            date,
+            in_time,
+            out_time,
+            check_in_at,
+            status,
+            attendance_time_zone_name,
+            attendance_time_zone,
+            break_total_minutes,
+            total_work_minutes,
+            employee_id
+          `)
+          .gte('date', monthStart)
+          .lte('date', monthEnd)
+          .order('date', { ascending: true })
+          .order('employee_id', { ascending: true })
+          .range(from, from + EXPORT_PAGE_SIZE - 1);
+
+        if (error) throw error;
+
+        const page = (data ?? []) as MonthlyAttendanceExportRow[];
+        records.push(...page);
+        if (page.length < EXPORT_PAGE_SIZE) break;
+      }
+
+      const employeesById = new Map(employees.map((employee) => [employee.id, employee]));
+      const exportRows = records.flatMap((record) => {
+        const employee = employeesById.get(record.employee_id);
+
+        // Keep team-lead exports limited to employees loaded for their office.
+        if (user?.isTeamLead && !employee) return [];
+
+        const effectiveStatus = getEffectiveStatus(record);
+        return [[
+          employee?.employee_id ?? '',
+          employee?.full_name ?? 'Unknown',
+          employee?.office_name ?? 'No office',
+          record.date,
+          format(parseISO(record.date), 'EEEE'),
+          formatStatusLabel(effectiveStatus),
+          formatTime12h(record.in_time),
+          formatTime12h(record.out_time),
+          formatWorkMinutes(record.break_total_minutes),
+          formatWorkMinutes(record.total_work_minutes),
+          record.attendance_time_zone_name ?? '',
+          record.attendance_time_zone ?? '',
+        ]];
+      });
+
+      if (exportRows.length === 0) {
+        toast({
+          title: 'No attendance to export',
+          description: `There are no attendance records for ${format(parseISO(monthStart), 'MMMM yyyy')}.`,
+        });
+        return;
+      }
+
+      downloadCsv(
+        `attendance-${exportMonth}.csv`,
+        [
+          'Employee ID',
+          'Employee Name',
+          'Office',
+          'Date',
+          'Day',
+          'Status',
+          'In Time',
+          'Out Time',
+          'Break (HH:MM)',
+          'Worked (HH:MM)',
+          'Time Zone Name',
+          'Time Zone',
+        ],
+        exportRows,
+      );
+
+      toast({
+        title: 'Attendance exported',
+        description: `${exportRows.length} records exported for ${format(parseISO(monthStart), 'MMMM yyyy')}.`,
+      });
+    } catch (error) {
+      console.error('Error exporting monthly attendance:', error);
+      toast({
+        title: 'Export failed',
+        description: 'The monthly attendance report could not be created. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const fetchEmployees = async () => {
@@ -771,7 +897,26 @@ export default function Attendance() {
           <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground">Attendance</h1>
           <p className="text-muted-foreground mt-1">Track and manage employee attendance</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <div className="flex w-full flex-col gap-2 sm:w-auto lg:flex-row lg:items-center">
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="Attendance export month"
+              type="month"
+              value={exportMonth}
+              onChange={(event) => setExportMonth(event.target.value)}
+              className="min-w-0 flex-1 sm:w-40 sm:flex-none"
+            />
+            <Button
+              variant="outline"
+              onClick={handleExportMonthlyAttendance}
+              disabled={isExporting || !exportMonth || employees.length === 0}
+              className="shrink-0"
+            >
+              <Download data-icon="inline-start" />
+              {isExporting ? 'Exporting…' : 'Export CSV'}
+            </Button>
+          </div>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button variant="accent" size="lg" className="w-full sm:w-auto">
               <Plus className="h-5 w-5 mr-2" />
@@ -863,7 +1008,8 @@ export default function Attendance() {
               </Button>
             </div>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       <MonthlyAttendanceChart employees={employees} initialMonth={selectedDate} />
