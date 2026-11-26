@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   Users,
   Building2,
@@ -250,10 +251,15 @@ type SortOrder = 'asc' | 'desc';
 
 export default function Recruitment() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const validTabs = ['employees', 'assignments', 'offices', 'schedules', 'access'] as const;
+  // Managers can look; only admins can change people, offices, schedules or access.
+  const { can } = usePermissions();
+  const canManage = can('people.manage');
+  const validTabs = canManage
+    ? (['employees', 'assignments', 'offices', 'schedules', 'access'] as const)
+    : (['employees', 'assignments'] as const);
   const tabFromUrl = (() => {
     const t = searchParams.get('tab');
-    return t && validTabs.includes(t as (typeof validTabs)[number]) ? t : 'employees';
+    return t && (validTabs as readonly string[]).includes(t) ? t : 'employees';
   })();
   const [searchQuery, setSearchQuery] = useState('');
   const [employeesSearchQuery, setEmployeesSearchQuery] = useState('');
@@ -1468,7 +1474,7 @@ export default function Recruitment() {
         onValueChange={(value) => setSearchParams({ tab: value })}
         className="space-y-6"
       >
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className={`grid w-full ${canManage ? 'grid-cols-5' : 'grid-cols-2'}`}>
           <TabsTrigger
             value="employees"
             className="flex items-center gap-2 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-900 dark:data-[state=active]:bg-blue-950/50 dark:data-[state=active]:text-blue-200"
@@ -1483,6 +1489,8 @@ export default function Recruitment() {
             <Users className="h-4 w-4" />
             Employee Office
           </TabsTrigger>
+          {canManage ? (
+            <>
           <TabsTrigger
             value="offices"
             className="flex items-center gap-2 data-[state=active]:bg-amber-100 data-[state=active]:text-amber-900 dark:data-[state=active]:bg-amber-950/50 dark:data-[state=active]:text-amber-200"
@@ -1504,6 +1512,8 @@ export default function Recruitment() {
             <Shield className="h-4 w-4" />
             Access Control
           </TabsTrigger>
+            </>
+          ) : null}
         </TabsList>
 
         {/* Employee-Office Assignments Tab */}
@@ -1516,10 +1526,12 @@ export default function Recruitment() {
                     <Users className="h-5 w-5" />
                     Employee-Office Assignments
                   </CardTitle>
+                  {canManage ? (
                   <Button variant="outline" size="sm" onClick={() => openAssignDialog()}>
                     <Plus className="h-4 w-4 mr-2" />
                     Assign Employee
                   </Button>
+                  ) : null}
                 </div>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
                   <div className="relative flex-1 sm:max-w-xs">
@@ -1653,6 +1665,7 @@ export default function Recruitment() {
                             </Badge>
                           </TableCell>
                           <TableCell>
+                            {canManage ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon">
@@ -1674,6 +1687,7 @@ export default function Recruitment() {
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
+                            ) : null}
                           </TableCell>
                         </TableRow>
                       ))
@@ -1730,10 +1744,12 @@ export default function Recruitment() {
                     <UserCheck className="h-5 w-5" />
                     All Employees
                   </CardTitle>
+                  {canManage ? (
                   <Button variant="accent" size="sm" onClick={() => setIsAddEmployeeOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add Employee
                   </Button>
+                  ) : null}
                 </div>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
                   <div className="relative flex-1 sm:max-w-xs">
@@ -1799,9 +1815,11 @@ export default function Recruitment() {
                 <div className="py-12 text-center">
                   <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
                   <p className="text-muted-foreground">No employees found</p>
+                  {canManage ? (
                   <Button variant="outline" className="mt-4" onClick={() => setIsAddEmployeeOpen(true)}>
                     Add your first employee
                   </Button>
+                  ) : null}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1847,6 +1865,7 @@ export default function Recruitment() {
                             </Badge>
                           </TableCell>
                           <TableCell>
+                            {canManage ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon">
@@ -1883,6 +1902,7 @@ export default function Recruitment() {
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
+                            ) : null}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1895,6 +1915,7 @@ export default function Recruitment() {
         </TabsContent>
 
         {/* Offices Tab */}
+        {canManage ? (
         <TabsContent value="offices" className="space-y-6">
           <Card className="card-elevated">
             <CardHeader>
@@ -2007,8 +2028,10 @@ export default function Recruitment() {
             </CardContent>
           </Card>
         </TabsContent>
+        ) : null}
 
         {/* Operation/Settings Tab: Duty schedule templates + Departments */}
+        {canManage ? (
         <TabsContent value="schedules" className="space-y-6">
           {/* Duty Schedule Templates */}
           <Card className="card-elevated">
@@ -2361,8 +2384,10 @@ export default function Recruitment() {
             </DialogContent>
           </Dialog>
         </TabsContent>
+        ) : null}
 
         {/* Access Control Tab */}
+        {canManage ? (
         <TabsContent value="access" className="space-y-6">
           <Card className="card-elevated">
             <CardHeader>
@@ -2445,6 +2470,7 @@ export default function Recruitment() {
             </CardContent>
           </Card>
         </TabsContent>
+        ) : null}
       </Tabs>
 
       <Dialog open={isOfficeDialogOpen} onOpenChange={setIsOfficeDialogOpen}>
