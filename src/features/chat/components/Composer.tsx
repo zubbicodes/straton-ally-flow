@@ -10,11 +10,16 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import { Paperclip, SendHorizontal, Smile, X } from 'lucide-react';
+import { AtSign, Bold, ChevronDown, Code2, Italic, Link2, List, ListOrdered, Mic, Paperclip, Pilcrow, Plus, SendHorizontal, Smile, SquareCode, SquareSlash, Strikethrough, TextQuote, Underline, Video, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { formatBytes, namesToTokens, QUICK_EMOJI } from '../format';
+import { format, addHours } from 'date-fns';
+import { formatBytes, namesToTokens, QUICK_EMOJI, tokensToNames } from '../format';
+import { formatLink, formatSelection, type FormatAction, type FormatResult } from '../composer-format';
+import { useCancelScheduledMessage, useScheduleMessage, useScheduledMessages } from '../api';
 import type { DirectoryPerson } from '../types';
 import { PersonAvatar } from './PersonAvatar';
 
@@ -47,6 +52,8 @@ interface ComposerProps {
   onCancel?: () => void;
   submitLabel?: string;
   compact?: boolean;
+  channelId?: string;
+  parentId?: string | null;
 }
 
 export function Composer({
@@ -60,6 +67,8 @@ export function Composer({
   onCancel,
   submitLabel = 'Send',
   compact,
+  channelId,
+  parentId,
 }: ComposerProps) {
   const [text, setText] = useState(initialText);
   const [files, setFiles] = useState<File[]>([]);
@@ -68,8 +77,38 @@ export function Composer({
   const [mentionIndex, setMentionIndex] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [sending, setSending] = useState(false);
+  const [showToolbar, setShowToolbar] = useState(!compact);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [sendAt, setSendAt] = useState(() => format(addHours(new Date(), 1), "yyyy-MM-dd'T'HH:mm"));
+  const [recording, setRecording] = useState<'audio' | 'video' | null>(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const selectionRef = useRef({ start: 0, end: 0 });
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const discardRecordingRef = useRef(false);
+  const scheduled = useScheduledMessages(channelId, parentId);
+  const scheduleMessage = useScheduleMessage();
+  const cancelScheduled = useCancelScheduledMessage();
+
+  useEffect(() => {
+    if (!recording) return;
+    const started = Date.now();
+    const timer = window.setInterval(() => setRecordingSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [recording]);
+
+  useEffect(() => () => {
+    if (recorderRef.current?.state === 'recording') {
+      recorderRef.current.onstop = null;
+      recorderRef.current.stop();
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -131,9 +170,116 @@ export function Composer({
     setFiles((prev) => [...prev, ...next].slice(0, 10));
   };
 
+  const applyResult = (result: FormatResult) => {
+    setText(result.text);
+    setMentionQuery(null);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(result.start, result.end);
+    });
+  };
+
+  const applyFormat = (action: FormatAction) => {
+    const el = textareaRef.current;
+    applyResult(formatSelection(text, el?.selectionStart ?? text.length, el?.selectionEnd ?? text.length, action));
+  };
+
+  const openLink = () => {
+    const el = textareaRef.current;
+    selectionRef.current = { start: el?.selectionStart ?? text.length, end: el?.selectionEnd ?? text.length };
+    setLinkUrl('https://');
+    setLinkOpen(true);
+  };
+
+  const insertLink = () => {
+    try {
+      const { start, end } = selectionRef.current;
+      applyResult(formatLink(text, start, end, linkUrl));
+      setLinkOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Invalid link');
+    }
+  };
+
+  const startRecording = async (kind: 'audio' | 'video') => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      toast.error('Recording is not available in this browser');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(kind === 'video' ? { audio: true, video: true } : { audio: true });
+      const candidates = kind === 'video' ? ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'] : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+      const mimeType = candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      streamRef.current = stream;
+      recorderRef.current = recorder;
+      chunksRef.current = [];
+      discardRecordingRef.current = false;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) chunksRef.current.push(event.data);
+        if (chunksRef.current.reduce((total, chunk) => total + chunk.size, 0) > MAX_FILE_BYTES) {
+          discardRecordingRef.current = true;
+          toast.error('Recording reached the 25 MB attachment limit');
+          recorder.stop();
+        }
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
+        if (!discardRecordingRef.current && blob.size > 0) {
+          const extension = recorder.mimeType.includes('mp4') ? 'mp4' : 'webm';
+          addFiles([new File([blob], `${kind}-clip-${Date.now()}.${extension}`, { type: recorder.mimeType })]);
+        }
+        recorderRef.current = null;
+        streamRef.current = null;
+        chunksRef.current = [];
+        setRecording(null);
+      };
+      recorder.start(1000);
+      setRecording(kind);
+      setRecordingSeconds(0);
+    } catch (error) {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      toast.error(error instanceof Error ? error.message : 'Could not start recording');
+    }
+  };
+
+  const stopRecording = (discard = false) => {
+    discardRecordingRef.current = discard;
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+  };
+
+  const schedule = async () => {
+    if (!channelId || !text.trim() || files.length > 0) return;
+    const date = new Date(sendAt);
+    if (Number.isNaN(date.getTime()) || date.getTime() <= Date.now() + 60_000) {
+      toast.error('Choose a time at least one minute from now');
+      return;
+    }
+    const { body, mentions } = namesToTokens(text.trim(), picked);
+    try {
+      await scheduleMessage.mutateAsync({ channelId, parentId, body, mentions, sendAt: date.toISOString() });
+      setText('');
+      setPicked(new Map());
+      setScheduleOpen(false);
+      toast.success(`Message scheduled for ${format(date, 'd MMM, h:mm a')}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not schedule message');
+    }
+  };
+
+  const openSchedule = () => {
+    if (new Date(sendAt).getTime() <= Date.now() + 60_000) {
+      setSendAt(format(addHours(new Date(), 1), "yyyy-MM-dd'T'HH:mm"));
+    }
+    void scheduled.refetch();
+    setScheduleOpen(true);
+  };
+
   const submit = async () => {
     const trimmed = text.trim();
-    if ((!trimmed && files.length === 0) || sending) return;
+    if ((!trimmed && files.length === 0) || sending || recording) return;
     const { body, mentions } = namesToTokens(trimmed, picked);
     const pendingFiles = files;
     setSending(true);
@@ -154,6 +300,14 @@ export function Composer({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey) {
+      const action = ({ b: 'bold', i: 'italic', u: 'underline' } as const)[event.key.toLowerCase() as 'b' | 'i' | 'u'];
+      if (action) {
+        event.preventDefault();
+        applyFormat(action);
+        return;
+      }
+    }
     if (suggestions.length > 0) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
@@ -198,7 +352,7 @@ export function Composer({
     if (event.dataTransfer.files.length > 0) addFiles(event.dataTransfer.files);
   };
 
-  const canSend = (text.trim().length > 0 || files.length > 0) && !sending;
+  const canSend = (text.trim().length > 0 || files.length > 0) && !sending && !recording;
 
   return (
     <div
@@ -244,6 +398,31 @@ export function Composer({
         </div>
       ) : null}
 
+      {showToolbar ? (
+        <div role="toolbar" aria-label="Message formatting" className="flex items-center gap-0.5 overflow-x-auto border-b border-border/70 px-1.5 py-1">
+          <ComposerIconButton label="Bold (Ctrl+B)" onClick={() => applyFormat('bold')}><Bold className="h-4 w-4" /></ComposerIconButton>
+          <ComposerIconButton label="Italic (Ctrl+I)" onClick={() => applyFormat('italic')}><Italic className="h-4 w-4" /></ComposerIconButton>
+          <ComposerIconButton label="Underline (Ctrl+U)" onClick={() => applyFormat('underline')}><Underline className="h-4 w-4" /></ComposerIconButton>
+          <ComposerIconButton label="Strikethrough" onClick={() => applyFormat('strike')}><Strikethrough className="h-4 w-4" /></ComposerIconButton>
+          <DropdownMenu>
+              <DropdownMenuTrigger asChild><ComposerIconButton label="Text style" className="flex h-7 w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><Pilcrow className="h-4 w-4" /><ChevronDown className="h-3 w-3" /></ComposerIconButton></DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => applyFormat('paragraph')}>Paragraph</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => applyFormat('heading1')}>Heading</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => applyFormat('heading2')}>Subheading</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <span className="mx-1 h-4 w-px shrink-0 bg-border" />
+          <ComposerIconButton label="Insert link" onClick={openLink}><Link2 className="h-4 w-4" /></ComposerIconButton>
+          <ComposerIconButton label="Numbered list" onClick={() => applyFormat('number')}><ListOrdered className="h-4 w-4" /></ComposerIconButton>
+          <ComposerIconButton label="Bulleted list" onClick={() => applyFormat('bullet')}><List className="h-4 w-4" /></ComposerIconButton>
+          <span className="mx-1 h-4 w-px shrink-0 bg-border" />
+          <ComposerIconButton label="Quote" onClick={() => applyFormat('quote')}><TextQuote className="h-4 w-4" /></ComposerIconButton>
+          <ComposerIconButton label="Inline code" onClick={() => applyFormat('code')}><Code2 className="h-4 w-4" /></ComposerIconButton>
+          <ComposerIconButton label="Code block" onClick={() => applyFormat('codeBlock')}><SquareCode className="h-4 w-4" /></ComposerIconButton>
+        </div>
+      ) : null}
+
       {files.length > 0 ? (
         <div className="flex flex-wrap gap-1.5 border-b border-border px-2 pb-2 pt-2">
           {files.map((file, index) => (
@@ -279,14 +458,23 @@ export function Composer({
         }}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        onBlur={() => setTimeout(() => setMentionQuery(null), 150)}
+        onBlur={() => setTimeout(() => { if (document.activeElement !== textareaRef.current) setMentionQuery(null); }, 150)}
         className={cn(
           'block w-full resize-none bg-transparent px-3 text-[14px] leading-relaxed outline-none placeholder:text-muted-foreground',
           compact ? 'py-2' : 'py-2.5',
         )}
       />
 
-      <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
+      {recording ? (
+        <div className="mx-2 mb-2 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[12px]">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-destructive" />
+          <span className="font-medium">Recording {recording} clip · {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, '0')}</span>
+          <button type="button" onClick={() => stopRecording()} className="ml-auto font-medium text-primary hover:underline">Stop and attach</button>
+          <button type="button" onClick={() => stopRecording(true)} className="text-muted-foreground hover:underline">Discard</button>
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-x-0.5 gap-y-1 px-1.5 pb-1.5">
         {allowFiles ? (
           <>
             <input
@@ -299,11 +487,18 @@ export function Composer({
                 e.target.value = '';
               }}
             />
-            <ComposerIconButton label="Attach files" onClick={() => fileInputRef.current?.click()}>
-              <Paperclip className="h-4 w-4" />
-            </ComposerIconButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><ComposerIconButton label="Add attachment"><Plus className="h-4 w-4" /></ComposerIconButton></DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top">
+                <DropdownMenuItem onSelect={() => { if (fileInputRef.current) { fileInputRef.current.accept = ''; fileInputRef.current.click(); } }}><Paperclip className="mr-2 h-4 w-4" />Upload a file</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => { if (fileInputRef.current) { fileInputRef.current.accept = 'image/*'; fileInputRef.current.click(); } }}>Upload an image</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         ) : null}
+        <ComposerIconButton label={showToolbar ? 'Hide formatting' : 'Show formatting'} aria-pressed={showToolbar} onClick={() => setShowToolbar((value) => !value)}>
+          <span className="text-[15px] font-medium underline underline-offset-4">Aa</span>
+        </ComposerIconButton>
         <Popover>
           <PopoverTrigger asChild>
             <ComposerIconButton label="Insert emoji">
@@ -326,9 +521,24 @@ export function Composer({
             </div>
           </PopoverContent>
         </Popover>
-        <span className="ml-2 hidden text-[11px] text-muted-foreground sm:inline">
-          <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift + Enter</kbd> for a new line
-        </span>
+        <ComposerIconButton label="Mention someone" onClick={() => { insertAtCaret('@'); setMentionQuery(''); }}><AtSign className="h-4 w-4" /></ComposerIconButton>
+        {allowFiles ? (
+          <>
+            <span className="mx-1 h-4 w-px bg-border" />
+            <ComposerIconButton label="Record video clip" disabled={Boolean(recording)} onClick={() => void startRecording('video')}><Video className="h-4 w-4" /></ComposerIconButton>
+            <ComposerIconButton label="Record voice clip" disabled={Boolean(recording)} onClick={() => void startRecording('audio')}><Mic className="h-4 w-4" /></ComposerIconButton>
+          </>
+        ) : null}
+        <span className="mx-1 h-4 w-px bg-border" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><ComposerIconButton label="Chat shortcuts"><SquareSlash className="h-4 w-4" /></ComposerIconButton></DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top">
+            <DropdownMenuItem onSelect={() => insertAtCaret('@assistant ')}>Ask the assistant</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => applyFormat('quote')}>Insert quote</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => applyFormat('codeBlock')}>Insert code block</DropdownMenuItem>
+            {allowFiles ? <><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => { if (fileInputRef.current) { fileInputRef.current.accept = ''; fileInputRef.current.click(); } }}>Attach a file</DropdownMenuItem></> : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="ml-auto flex items-center gap-1">
           {onCancel ? (
             <button
@@ -351,8 +561,47 @@ export function Composer({
           >
             {onCancel ? submitLabel : <SendHorizontal className="h-3.5 w-3.5" />}
           </button>
+          {channelId && !onCancel ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><ComposerIconButton label="Send options"><ChevronDown className="h-3.5 w-3.5" /></ComposerIconButton></DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top">
+                <DropdownMenuItem disabled={!text.trim() || files.length > 0 || Boolean(recording)} onSelect={openSchedule}>Schedule message…</DropdownMenuItem>
+                <DropdownMenuItem onSelect={openSchedule}>View scheduled messages{scheduled.data?.length ? ` (${scheduled.data.length})` : ''}</DropdownMenuItem>
+                {files.length > 0 ? <p className="max-w-52 px-2 py-1 text-[11px] text-muted-foreground">Attachments and clips can only be sent now.</p> : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
       </div>
+
+      <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Insert link</DialogTitle><DialogDescription>Add a web address to the selected text.</DialogDescription></DialogHeader>
+          <input autoFocus type="url" value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') insertLink(); }} aria-label="Link URL" className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+          <DialogFooter><button type="button" onClick={insertLink} className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">Insert link</button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Schedule a message</DialogTitle><DialogDescription>It will send from your account at the selected local time, even if you close this page.</DialogDescription></DialogHeader>
+          <label className="space-y-1 text-sm font-medium">Send at
+            <input type="datetime-local" value={sendAt} onChange={(event) => setSendAt(event.target.value)} className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+          </label>
+          <button type="button" onClick={() => void schedule()} disabled={!text.trim() || files.length > 0 || Boolean(recording) || scheduleMessage.isPending} className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{scheduleMessage.isPending ? 'Scheduling…' : 'Schedule current message'}</button>
+          <div className="border-t border-border pt-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Scheduled in this conversation</p>
+            {scheduled.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : scheduled.data?.length ? (
+              <div className="max-h-48 space-y-2 overflow-y-auto">
+                {scheduled.data.map((message) => <div key={message.id} className="flex items-start gap-2 rounded-md border border-border p-2 text-sm">
+                  <div className="min-w-0 flex-1"><p className="truncate">{tokensToNames(message.body, new Map(people.map((person) => [person.user_id, person])))}</p><p className="text-xs text-muted-foreground">{message.status === 'failed' ? message.last_error ?? 'Could not send' : format(new Date(message.send_at), 'd MMM, h:mm a')}</p></div>
+                  <button type="button" onClick={() => cancelScheduled.mutate(message, { onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not cancel') })} disabled={cancelScheduled.isPending} aria-label="Cancel scheduled message" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+                </div>)}
+              </div>
+            ) : <p className="text-sm text-muted-foreground">No scheduled messages.</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -364,7 +613,7 @@ const ComposerIconButton = forwardRef<HTMLButtonElement, { label: string; childr
       type="button"
       aria-label={label}
       title={label}
-      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
       {...props}
     >
       {children}

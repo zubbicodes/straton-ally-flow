@@ -32,6 +32,7 @@ export const chatKeys = {
   thread: (parentId: string) => ['chat', 'thread', parentId] as const,
   search: (q: string) => ['chat', 'search', q] as const,
   file: (path: string) => ['chat', 'file', path] as const,
+  scheduled: (channelId: string, parentId?: string | null) => ['chat', 'scheduled', channelId, parentId ?? null] as const,
 };
 
 function unwrap<T>(result: { data: T | null; error: { message: string } | null }): T {
@@ -213,6 +214,67 @@ export interface SendInput {
   mentions: string[];
   parentId?: string | null;
   files?: File[];
+}
+
+export interface ScheduledChatMessage {
+  id: string;
+  channel_id: string;
+  parent_id: string | null;
+  body: string;
+  send_at: string;
+  status: 'pending' | 'sent' | 'failed';
+  last_error: string | null;
+}
+
+export function useScheduledMessages(channelId?: string, parentId?: string | null) {
+  return useQuery({
+    queryKey: chatKeys.scheduled(channelId ?? '', parentId),
+    enabled: Boolean(channelId),
+    queryFn: async () => {
+      let query = db.from('scheduled_chat_messages')
+        .select('id, channel_id, parent_id, body, send_at, status, last_error')
+        .eq('channel_id', channelId)
+        .in('status', ['pending', 'failed'])
+        .order('send_at', { ascending: true });
+      query = parentId ? query.eq('parent_id', parentId) : query.is('parent_id', null);
+      return unwrap<ScheduledChatMessage[]>(await query) ?? [];
+    },
+  });
+}
+
+export function useScheduleMessage() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async (input: { channelId: string; parentId?: string | null; body: string; mentions: string[]; sendAt: string }) => {
+      if (!user) throw new Error('Sign in to schedule a message');
+      return unwrap<ScheduledChatMessage>(await db.from('scheduled_chat_messages').insert({
+        channel_id: input.channelId,
+        parent_id: input.parentId ?? null,
+        user_id: user.id,
+        body: input.body,
+        mentions: input.mentions,
+        send_at: input.sendAt,
+      }).select('id, channel_id, parent_id, body, send_at, status, last_error').single());
+    },
+    onSuccess: (message) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.scheduled(message.channel_id, message.parent_id) });
+    },
+  });
+}
+
+export function useCancelScheduledMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (message: ScheduledChatMessage) => {
+      const deleted = unwrap<{ id: string }[]>(await db.from('scheduled_chat_messages').delete().eq('id', message.id).select('id'));
+      if (!deleted?.length) throw new Error('This message has already been sent or canceled');
+      return message;
+    },
+    onSuccess: (message) => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.scheduled(message.channel_id, message.parent_id) });
+    },
+  });
 }
 
 export const ASSISTANT_MENTION = /(^|\s)@assistant\b/i;

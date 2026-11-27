@@ -282,6 +282,22 @@ function AttachmentView({ file }: { file: Attachment }) {
       </a>
     );
   }
+  if (file.mime_type?.startsWith('audio/')) {
+    return (
+      <div className="max-w-full rounded-md border border-border bg-card p-2">
+        <p className="mb-1 truncate text-[11px] text-muted-foreground">{file.file_name}</p>
+        <audio controls preload="metadata" src={url} className="h-9 max-w-full" aria-label={`Voice clip: ${file.file_name}`} />
+      </div>
+    );
+  }
+  if (file.mime_type?.startsWith('video/')) {
+    return (
+      <div className="max-w-full overflow-hidden rounded-md border border-border bg-card">
+        <video controls preload="metadata" src={url} className="max-h-72 max-w-full" aria-label={`Video clip: ${file.file_name}`} />
+        <p className="truncate px-2 py-1 text-[11px] text-muted-foreground">{file.file_name}</p>
+      </div>
+    );
+  }
   return (
     <a
       href={url}
