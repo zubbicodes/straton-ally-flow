@@ -146,7 +146,7 @@ const App = () => (
                       <Route path="dashboard" element={<HomePage />} />
                       <Route path="employees" element={<Navigate to="/admin/recruitment?tab=employees" replace />} />
                       <Route path="employees/new" element={<ProtectedRoute require="people.manage"><NewEmployee /></ProtectedRoute>} />
-                      <Route path="employees/:id/edit" element={<EditEmployee />} />
+                      <Route path="employees/:id/edit" element={<ProtectedRoute require="people.manage"><EditEmployee /></ProtectedRoute>} />
                       <Route path="departments" element={<ProtectedRoute require="departments.manage"><Departments /></ProtectedRoute>} />
                       <Route path="attendance" element={<ProtectedRoute require="attendance.team"><Attendance /></ProtectedRoute>} />
                       <Route path="salaries" element={<ProtectedRoute require="salaries.view"><Salaries /></ProtectedRoute>} />
