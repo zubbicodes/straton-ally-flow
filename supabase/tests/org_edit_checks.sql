@@ -33,6 +33,10 @@ WITH u AS (UPDATE public.office_departments SET office_id = office_id
             WHERE office_id = (SELECT office FROM ids) RETURNING 1)
 INSERT INTO results SELECT 'manager cannot change office departments', count(*) = 0 FROM u;
 
+WITH u AS (UPDATE public.duty_schedules SET office_id = office_id
+            WHERE office_id = (SELECT office FROM ids) RETURNING 1)
+INSERT INTO results SELECT 'manager cannot change duty schedules', count(*) = 0 FROM u;
+
 WITH u AS (UPDATE public.access_control SET is_active = is_active RETURNING 1)
 INSERT INTO results SELECT 'manager cannot change access control', count(*) = 0 FROM u;
 
@@ -70,6 +74,22 @@ WITH u AS (UPDATE public.employees SET designation = designation
             WHERE id = (SELECT colleague FROM ids) RETURNING 1)
 INSERT INTO results SELECT 'admin can edit employees', count(*) = 1 FROM u;
 RESET ROLE;
+
+INSERT INTO results SELECT 'manager schedule write policy removed', NOT EXISTS (
+  SELECT 1 FROM pg_policies
+  WHERE schemaname = 'public' AND tablename = 'duty_schedules'
+    AND policyname = 'Team leads can manage office duty schedules'
+);
+INSERT INTO results SELECT 'manager retains schedule read policy', EXISTS (
+  SELECT 1 FROM pg_policies
+  WHERE schemaname = 'public' AND tablename = 'duty_schedules'
+    AND policyname = 'Team leads can view office duty schedules' AND cmd = 'SELECT'
+);
+INSERT INTO results SELECT 'manager profile write policy removed', NOT EXISTS (
+  SELECT 1 FROM pg_policies
+  WHERE schemaname = 'public' AND tablename = 'profiles'
+    AND policyname = 'Team leads can update office profiles'
+);
 
 SELECT CASE WHEN ok THEN 'PASS' ELSE 'FAIL' END AS result, name FROM results;
 SELECT count(*) FILTER (WHERE NOT ok) AS failures, count(*) AS total FROM results;
