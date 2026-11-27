@@ -89,6 +89,8 @@ export function ThreadPane({ parentId, channelTitle, byId, people, canPost, canR
         <div className="shrink-0 p-3 pt-0">
           <Composer
             key={parentId}
+            channelId={parent.channel_id}
+            parentId={parentId}
             people={people}
             placeholder="Reply…"
             onSubmit={({ body, mentions, files }) =>

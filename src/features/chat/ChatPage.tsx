@@ -312,6 +312,7 @@ function ChannelView({ channelId }: { channelId: string }) {
           {canPost ? (
             <Composer
               key={channelId}
+              channelId={channelId}
               people={people}
               placeholder={`Message ${prefix}${title}`}
               onSubmit={({ body, mentions, files }) => send.mutateAsync({ channelId, body, mentions, files })}
